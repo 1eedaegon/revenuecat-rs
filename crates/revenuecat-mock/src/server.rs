@@ -16,8 +16,10 @@ use chrono::Utc;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
+use crate::sign::expected_post_params_hash;
 use crate::state::{
-    expiry_for, NonSubscriptionEntry, RecordedRequest, ServerState, SubscriptionEntry,
+    expiry_for, MockRedemption, NonSubscriptionEntry, RecordedRequest, ServerState,
+    SubscriptionEntry,
 };
 
 const ETAG_HEADER: &str = "X-RevenueCat-ETag";
@@ -29,6 +31,8 @@ const RECORDED_HEADERS: &[&str] = &[
     "x-version",
     "x-observer-mode-enabled",
     "x-revenuecat-etag",
+    "x-nonce",
+    "x-post-params-hash",
 ];
 
 pub fn router(state: Arc<ServerState>) -> Router {
@@ -41,11 +45,16 @@ pub fn router(state: Arc<ServerState>) -> Router {
             get(get_virtual_currencies),
         )
         .route("/v1/subscribers/identify", post(post_identify))
+        .route("/v1/subscribers/redeem_purchase", post(post_redeem))
         .route("/v1/receipts", post(post_receipts))
         .route("/rcbilling/v1/subscribers/{id}/products", get(get_products))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             record_and_authorize,
+        ))
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            sign_responses,
         ))
         .with_state(state)
 }
@@ -94,6 +103,97 @@ async fn record_and_authorize(
 
     next.run(Request::from_parts(parts, Body::from(bytes)))
         .await
+}
+
+/// Signs responses on Trusted-Entitlements-verified endpoints exactly like
+/// the real backend: adds `X-RevenueCat-Request-Time` and a 180-byte
+/// `X-Signature` over `salt || api_key || nonce || path || post_params_hash
+/// || request_time || etag || body`.
+async fn sign_responses(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path().to_owned();
+    let api_key = request
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default()
+        .to_owned();
+    let nonce = header_string(request.headers(), "x-nonce");
+    let post_params_hash = header_string(request.headers(), "x-post-params-hash");
+
+    let response = next.run(request).await;
+    let status = response.status();
+    if !is_verified_path(&path) || !(status.is_success() || status == StatusCode::NOT_MODIFIED) {
+        return response;
+    }
+
+    let (mut parts, body) = response.into_parts();
+    let bytes = to_bytes(body, 1 << 20).await.unwrap_or_default();
+    let etag = parts
+        .headers
+        .get(ETAG_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let request_time = Utc::now().timestamp_millis().to_string();
+
+    let signature = state.signer.sign(
+        &api_key,
+        nonce.as_deref(),
+        &path,
+        post_params_hash.as_deref(),
+        &request_time,
+        etag.as_deref(),
+        &bytes,
+    );
+    if let (Ok(sig), Ok(time)) = (signature.parse(), request_time.parse()) {
+        parts.headers.insert("X-Signature", sig);
+        parts.headers.insert("X-RevenueCat-Request-Time", time);
+    }
+    Response::from_parts(parts, Body::from(bytes))
+}
+
+fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+}
+
+/// Endpoints with `supportsSignatureVerification` in the official SDKs.
+fn is_verified_path(path: &str) -> bool {
+    if path == "/v1/receipts"
+        || path == "/v1/subscribers/identify"
+        || path == "/v1/subscribers/redeem_purchase"
+    {
+        return true;
+    }
+    match path.strip_prefix("/v1/subscribers/") {
+        Some(rest) => {
+            !rest.contains('/')
+                || rest.ends_with("/offerings")
+                || rest.ends_with("/virtual_currencies")
+        }
+        None => false,
+    }
+}
+
+/// Validates a client's `X-Post-Params-Hash` against the body fields it
+/// claims to cover; a mismatch means the client hashed the wrong values.
+fn validate_post_params_hash(headers: &HeaderMap, fields: &[(&str, &str)]) -> Option<Response> {
+    let sent = headers.get("x-post-params-hash")?.to_str().ok()?;
+    let expected = expected_post_params_hash(fields);
+    if sent != expected {
+        return Some(backend_error(
+            StatusCode::BAD_REQUEST,
+            7226,
+            &format!("X-Post-Params-Hash mismatch: expected {expected}, got {sent}"),
+        ));
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -214,9 +314,19 @@ async fn get_virtual_currencies(
     etag_response(&headers, json!({"virtual_currencies": currencies}))
 }
 
-async fn post_receipts(State(state): State<Arc<ServerState>>, Json(body): Json<Value>) -> Response {
+async fn post_receipts(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
     let fetch_token = body["fetch_token"].as_str().unwrap_or_default().to_owned();
     let app_user_id = body["app_user_id"].as_str().unwrap_or_default().to_owned();
+    if let Some(error) = validate_post_params_hash(
+        &headers,
+        &[("app_user_id", &app_user_id), ("fetch_token", &fetch_token)],
+    ) {
+        return error;
+    }
     let product_ids: Vec<String> = match &body["product_ids"] {
         Value::Array(ids) => ids
             .iter()
@@ -277,9 +387,26 @@ async fn post_receipts(State(state): State<Arc<ServerState>>, Json(body): Json<V
     }
 
     ensure_subscriber(&state, &app_user_id);
+    grant_product(&state, &app_user_id, &product, &fetch_token);
+
+    (
+        StatusCode::OK,
+        Json(subscriber_envelope(&state, &app_user_id)),
+    )
+        .into_response()
+}
+
+/// Records a purchase of `product` on the subscriber, shared by the receipts
+/// and redemption endpoints.
+fn grant_product(
+    state: &ServerState,
+    app_user_id: &str,
+    product: &crate::state::MockProduct,
+    store_transaction_id: &str,
+) {
     let now = Utc::now();
     if let Ok(mut subscribers) = state.subscribers.lock() {
-        if let Some(subscriber) = subscribers.get_mut(&app_user_id) {
+        if let Some(subscriber) = subscribers.get_mut(app_user_id) {
             if product.product_type == "subscription" {
                 let original = subscriber
                     .subscriptions
@@ -292,7 +419,7 @@ async fn post_receipts(State(state): State<Arc<ServerState>>, Json(body): Json<V
                         purchase_date: now,
                         original_purchase_date: original,
                         expires_date: expiry_for(product.period.as_deref(), now),
-                        store_transaction_id: fetch_token.clone(),
+                        store_transaction_id: store_transaction_id.to_owned(),
                     },
                 );
             } else {
@@ -303,17 +430,11 @@ async fn post_receipts(State(state): State<Arc<ServerState>>, Json(body): Json<V
                     .push(NonSubscriptionEntry {
                         id: Uuid::new_v4().simple().to_string(),
                         purchase_date: now,
-                        store_transaction_id: fetch_token.clone(),
+                        store_transaction_id: store_transaction_id.to_owned(),
                     });
             }
         }
     }
-
-    (
-        StatusCode::OK,
-        Json(subscriber_envelope(&state, &app_user_id)),
-    )
-        .into_response()
 }
 
 async fn post_identify(State(state): State<Arc<ServerState>>, Json(body): Json<Value>) -> Response {
@@ -352,6 +473,78 @@ async fn post_identify(State(state): State<Arc<ServerState>>, Json(body): Json<V
         StatusCode::OK
     };
     (status, Json(subscriber_envelope(&state, &new_id))).into_response()
+}
+
+/// `POST /v1/subscribers/redeem_purchase`: body
+/// `{"redemption_token", "app_user_id"}`. Success returns the subscriber
+/// envelope; failures use the real backend codes 7849/7852/7853.
+async fn post_redeem(State(state): State<Arc<ServerState>>, Json(body): Json<Value>) -> Response {
+    let token = body["redemption_token"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let app_user_id = body["app_user_id"].as_str().unwrap_or_default().to_owned();
+    if app_user_id.is_empty() {
+        return backend_error(StatusCode::BAD_REQUEST, 7220, "Empty app user id.");
+    }
+    ensure_subscriber(&state, &app_user_id);
+
+    let redemption = state
+        .redemptions
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&token).cloned());
+    let Some(redemption) = redemption else {
+        return backend_error(
+            StatusCode::BAD_REQUEST,
+            7849,
+            "Invalid Web Billing redemption token.",
+        );
+    };
+
+    match redemption {
+        MockRedemption::Expired { obfuscated_email } => (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "code": 7853,
+                "message": "The link has expired.",
+                "purchase_redemption_error_info": {"obfuscated_email": obfuscated_email},
+            })),
+        )
+            .into_response(),
+        MockRedemption::Valid { product_id } => {
+            {
+                let Ok(mut redeemed) = state.redeemed_by.lock() else {
+                    return backend_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        7110,
+                        "Internal server error.",
+                    );
+                };
+                match redeemed.get(&token) {
+                    Some(owner) if *owner != app_user_id => {
+                        return backend_error(
+                            StatusCode::FORBIDDEN,
+                            7852,
+                            "The purchase has already been redeemed.",
+                        );
+                    }
+                    _ => {
+                        redeemed.insert(token.clone(), app_user_id.clone());
+                    }
+                }
+            }
+            let Some(product) = state.product(&product_id).cloned() else {
+                return backend_error(StatusCode::BAD_REQUEST, 7662, "Unknown product.");
+            };
+            grant_product(&state, &app_user_id, &product, &format!("web_{token}"));
+            (
+                StatusCode::OK,
+                Json(subscriber_envelope(&state, &app_user_id)),
+            )
+                .into_response()
+        }
+    }
 }
 
 const KNOWN_RESERVED_ATTRIBUTES: &[&str] = &[
