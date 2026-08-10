@@ -95,10 +95,11 @@ impl Backend {
     /// Signature-verified with a nonce, like the official SDKs.
     pub async fn get_customer_info(&self, app_user_id: &str) -> Result<CustomerInfo> {
         let path = format!("/v1/subscribers/{}", encode_path_segment(app_user_id));
-        let response = self
-            .http
-            .get_with::<Value>(&path, RequestOptions::verified_with_nonce())
-            .await?;
+        let options = RequestOptions {
+            endpoint_name: Some("get_customer"),
+            ..RequestOptions::verified_with_nonce()
+        };
+        let response = self.http.get_with::<Value>(&path, options).await?;
         CustomerInfo::from_response_with_verification(response.value, response.verification)
     }
 
@@ -113,6 +114,7 @@ impl Backend {
                 ("app_user_id", request.app_user_id.clone()),
                 ("fetch_token", request.fetch_token.clone()),
             ],
+            endpoint_name: Some("post_receipt"),
         };
         let response = self
             .http
@@ -127,11 +129,11 @@ impl Backend {
             "/v1/subscribers/{}/offerings",
             encode_path_segment(app_user_id)
         );
-        Ok(self
-            .http
-            .get_with(&path, RequestOptions::verified())
-            .await?
-            .value)
+        let options = RequestOptions {
+            endpoint_name: Some("get_offerings"),
+            ..RequestOptions::verified()
+        };
+        Ok(self.http.get_with(&path, options).await?.value)
     }
 
     /// `GET /rcbilling/v1/subscribers/{id}/products?id=a&id=b` — Web Billing
@@ -174,6 +176,7 @@ impl Backend {
                 ("app_user_id", app_user_id.to_owned()),
                 ("new_app_user_id", new_app_user_id.to_owned()),
             ],
+            endpoint_name: Some("log_in"),
             ..RequestOptions::default()
         };
         let response = self
@@ -217,11 +220,22 @@ impl Backend {
             "/v1/subscribers/{}/virtual_currencies",
             encode_path_segment(app_user_id)
         );
-        Ok(self
+        let options = RequestOptions {
+            endpoint_name: Some("get_virtual_currencies"),
+            ..RequestOptions::verified_with_nonce()
+        };
+        Ok(self.http.get_with(&path, options).await?.value)
+    }
+
+    /// `POST {diagnostics_host}/v1/diagnostics` — batched diagnostics
+    /// entries wrapped as `{"entries": [...]}`.
+    pub async fn post_diagnostics(&self, diagnostics_url: &str, entries: &[Value]) -> Result<()> {
+        let url = format!("{diagnostics_url}/v1/diagnostics");
+        let _ = self
             .http
-            .get_with(&path, RequestOptions::verified_with_nonce())
-            .await?
-            .value)
+            .post_absolute(&url, json!({"entries": entries}))
+            .await?;
+        Ok(())
     }
 
     /// `POST /v1/subscribers/redeem_purchase` — attaches a web purchase to
@@ -238,6 +252,7 @@ impl Backend {
             retryable: true,
             verify: true,
             nonce: true,
+            endpoint_name: Some("post_redeem_web_purchase"),
             ..RequestOptions::default()
         };
         let response = self

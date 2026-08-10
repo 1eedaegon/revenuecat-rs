@@ -43,6 +43,7 @@ mod backend;
 mod billing;
 mod cache;
 mod configuration;
+mod diagnostics;
 mod error;
 mod http;
 mod identity;

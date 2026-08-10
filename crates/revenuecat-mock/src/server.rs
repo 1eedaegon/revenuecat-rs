@@ -47,6 +47,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
         .route("/v1/subscribers/identify", post(post_identify))
         .route("/v1/subscribers/redeem_purchase", post(post_redeem))
         .route("/v1/receipts", post(post_receipts))
+        .route("/v1/diagnostics", post(post_diagnostics))
         .route("/rcbilling/v1/subscribers/{id}/products", get(get_products))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
@@ -545,6 +546,20 @@ async fn post_redeem(State(state): State<Arc<ServerState>>, Json(body): Json<Val
                 .into_response()
         }
     }
+}
+
+/// `POST /v1/diagnostics` — accepts `{"entries": [...]}` and records them.
+async fn post_diagnostics(
+    State(state): State<Arc<ServerState>>,
+    Json(body): Json<Value>,
+) -> Response {
+    let Some(entries) = body["entries"].as_array() else {
+        return backend_error(StatusCode::BAD_REQUEST, 7226, "Missing entries.");
+    };
+    if let Ok(mut diagnostics) = state.diagnostics.lock() {
+        diagnostics.extend(entries.iter().cloned());
+    }
+    (StatusCode::OK, Json(json!({}))).into_response()
 }
 
 const KNOWN_RESERVED_ATTRIBUTES: &[&str] = &[

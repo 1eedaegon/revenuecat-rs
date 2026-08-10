@@ -117,6 +117,8 @@ pub struct Configuration {
     pub(crate) http_timeout: Duration,
     pub(crate) cache_ttl: Duration,
     pub(crate) store_billing: Option<Arc<dyn StoreBilling>>,
+    pub(crate) diagnostics_enabled: bool,
+    pub(crate) diagnostics_url: String,
     pub(crate) verification_mode: EntitlementVerificationMode,
     /// Base64 Ed25519 root public key; `None` uses RevenueCat's production
     /// root key. Overridable so tests/mocks can sign with their own chain.
@@ -155,6 +157,8 @@ pub struct ConfigurationBuilder {
     http_timeout: Duration,
     cache_ttl: Duration,
     store_billing: Option<Arc<dyn StoreBilling>>,
+    diagnostics_enabled: bool,
+    diagnostics_url: String,
     verification_mode: EntitlementVerificationMode,
     verification_root_key: Option<String>,
 }
@@ -171,9 +175,24 @@ impl ConfigurationBuilder {
             http_timeout: DEFAULT_HTTP_TIMEOUT,
             cache_ttl: DEFAULT_CACHE_TTL,
             store_billing: None,
+            diagnostics_enabled: false,
+            diagnostics_url: crate::diagnostics::DEFAULT_DIAGNOSTICS_URL.to_owned(),
             verification_mode: EntitlementVerificationMode::default(),
             verification_root_key: None,
         }
+    }
+
+    /// Enables diagnostics tracking (off by default, like the official SDKs).
+    /// Batched events post to the dedicated diagnostics host.
+    pub fn diagnostics_enabled(mut self, enabled: bool) -> Self {
+        self.diagnostics_enabled = enabled;
+        self
+    }
+
+    /// Overrides the diagnostics host (tests/mocks only).
+    pub fn diagnostics_url(mut self, url: impl Into<String>) -> Self {
+        self.diagnostics_url = url.into().trim_end_matches('/').to_owned();
+        self
     }
 
     /// `None` (the default) configures an anonymous user.
@@ -261,6 +280,8 @@ impl ConfigurationBuilder {
             http_timeout: self.http_timeout,
             cache_ttl: self.cache_ttl,
             store_billing: self.store_billing,
+            diagnostics_enabled: self.diagnostics_enabled,
+            diagnostics_url: self.diagnostics_url,
             verification_mode: self.verification_mode,
             verification_root_key: self.verification_root_key,
         })

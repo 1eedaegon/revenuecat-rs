@@ -127,6 +127,7 @@ pub struct ServerState {
     pub(crate) redemptions: Mutex<HashMap<String, MockRedemption>>,
     /// redemption token -> app_user_id that redeemed it.
     pub(crate) redeemed_by: Mutex<HashMap<String, String>>,
+    pub(crate) diagnostics: Mutex<Vec<serde_json::Value>>,
     pub(crate) subscribers: Mutex<HashMap<String, Subscriber>>,
     /// fetch_token -> app_user_id, to reject token reuse across users.
     pub(crate) used_tokens: Mutex<HashMap<String, String>>,
@@ -150,6 +151,7 @@ impl ServerState {
             signer: crate::sign::ResponseSigner::new(tamper_signatures),
             redemptions: Mutex::new(redemptions),
             redeemed_by: Mutex::new(HashMap::new()),
+            diagnostics: Mutex::new(Vec::new()),
             subscribers: Mutex::new(HashMap::new()),
             used_tokens: Mutex::new(HashMap::new()),
             requests: Mutex::new(Vec::new()),
@@ -162,6 +164,14 @@ impl ServerState {
 
     pub fn received(&self) -> Vec<RecordedRequest> {
         self.requests.lock().map(|r| r.clone()).unwrap_or_default()
+    }
+
+    /// Diagnostics entries received on POST /v1/diagnostics.
+    pub fn diagnostics(&self) -> Vec<serde_json::Value> {
+        self.diagnostics
+            .lock()
+            .map(|d| d.clone())
+            .unwrap_or_default()
     }
 
     pub fn subscriber(&self, app_user_id: &str) -> Option<Subscriber> {

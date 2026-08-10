@@ -11,6 +11,7 @@ use crate::billing::simulated::missing_store_billing_error;
 use crate::billing::{SimulatedStoreBilling, StoreBilling};
 use crate::cache::DeviceCache;
 use crate::configuration::{ApiKeyKind, Configuration};
+use crate::diagnostics::{DiagnosticsTracker, MAX_EVENTS_PER_REQUEST};
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::HttpClient;
 use crate::identity::IdentityManager;
@@ -48,6 +49,7 @@ struct PurchasesInner {
     backend: Arc<Backend>,
     billing: Arc<dyn StoreBilling>,
     cache: DeviceCache,
+    diagnostics: Arc<DiagnosticsTracker>,
     listener: Mutex<Option<CustomerInfoListener>>,
 }
 
@@ -62,7 +64,8 @@ impl Purchases {
     /// simulated Test Store is used; other keys require a
     /// [`StoreBilling`] implementation via the configuration builder.
     pub fn configure(config: Configuration) -> Result<Self> {
-        let http = HttpClient::new(&config)?;
+        let diagnostics = Arc::new(DiagnosticsTracker::new(config.diagnostics_enabled));
+        let http = HttpClient::new(&config, Arc::clone(&diagnostics))?;
         let backend = Arc::new(Backend::new(http));
         let identity = Arc::new(IdentityManager::new(config.app_user_id.clone()));
 
@@ -82,6 +85,7 @@ impl Purchases {
                 backend,
                 billing,
                 cache,
+                diagnostics,
                 listener: Mutex::new(None),
             }),
         })
@@ -403,6 +407,49 @@ impl Purchases {
         self.inner.cache.invalidate_virtual_currencies();
     }
 
+    // -- Diagnostics -------------------------------------------------------
+
+    /// Posts queued diagnostics entries in batches (200 per request) to the
+    /// diagnostics host, following Android's retry/clear semantics. No-op
+    /// when diagnostics is disabled or nothing is queued.
+    pub async fn flush_diagnostics(&self) -> Result<()> {
+        while let Some(batch) = self.inner.diagnostics.take_batch() {
+            let result = self
+                .inner
+                .backend
+                .post_diagnostics(&self.inner.config.diagnostics_url, &batch)
+                .await;
+            match result {
+                Ok(()) => self.inner.diagnostics.batch_succeeded(),
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ErrorCode::NetworkError | ErrorCode::UnknownBackendError
+                    ) =>
+                {
+                    self.inner.diagnostics.batch_failed_retryable(batch);
+                    return Err(error);
+                }
+                Err(error) => {
+                    self.inner.diagnostics.batch_failed_fatal();
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Fire-and-forget flush once a full batch has accumulated, standing in
+    /// for Android's 200 KB file-size trigger.
+    fn maybe_auto_flush(&self) {
+        if self.inner.diagnostics.pending() >= MAX_EVENTS_PER_REQUEST {
+            let purchases = self.clone();
+            tauri_agnostic_spawn(async move {
+                let _ = purchases.flush_diagnostics().await;
+            });
+        }
+    }
+
     // -- Internals ---------------------------------------------------------
 
     async fn fetch_and_cache_customer_info(&self, app_user_id: &str) -> Result<CustomerInfo> {
@@ -412,12 +459,31 @@ impl Purchases {
     }
 
     fn store_and_notify(&self, info: &CustomerInfo) {
+        // `customer_info_verification_result` is skipped for NotRequested,
+        // matching trackCustomerInfoVerificationResultIfNeeded.
+        if info.entitlements.verification != crate::models::VerificationResult::NotRequested {
+            self.inner.diagnostics.track(
+                "customer_info_verification_result",
+                serde_json::json!({
+                    "verification_result": format!("{:?}", info.entitlements.verification)
+                }),
+            );
+        }
+        self.maybe_auto_flush();
         self.inner
             .cache
             .store_customer_info(&self.app_user_id(), info);
         if let Some(listener) = &*self.inner.listener.lock().expect("listener lock poisoned") {
             listener(info);
         }
+    }
+}
+
+/// Spawns on the ambient tokio runtime when one exists; otherwise drops the
+/// task (auto-flush is best-effort — explicit flush_diagnostics remains).
+fn tauri_agnostic_spawn<F: std::future::Future<Output = ()> + Send + 'static>(future: F) {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(future);
     }
 }
 

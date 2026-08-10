@@ -10,7 +10,11 @@ use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use std::sync::Arc;
+use std::time::Instant;
+
 use crate::configuration::{Configuration, EntitlementVerificationMode};
+use crate::diagnostics::DiagnosticsTracker;
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::etag::ETagManager;
 use crate::models::VerificationResult;
@@ -55,6 +59,9 @@ pub struct RequestOptions {
     pub nonce: bool,
     /// `(field_name, value)` pairs hashed into `X-Post-Params-Hash`.
     pub signed_fields: Vec<(&'static str, String)>,
+    /// Android-style endpoint name for the `http_request_performed`
+    /// diagnostics event; `None` skips tracking.
+    pub endpoint_name: Option<&'static str>,
 }
 
 impl RequestOptions {
@@ -82,6 +89,7 @@ pub struct HttpClient {
     etags: ETagManager,
     verifier: Option<SignatureVerifier>,
     mode: EntitlementVerificationMode,
+    diagnostics: Arc<DiagnosticsTracker>,
 }
 
 #[derive(Debug)]
@@ -93,7 +101,7 @@ pub struct HttpResponse<T> {
 }
 
 impl HttpClient {
-    pub fn new(config: &Configuration) -> Result<Self> {
+    pub fn new(config: &Configuration, diagnostics: Arc<DiagnosticsTracker>) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(config.http_timeout)
             .build()
@@ -133,7 +141,21 @@ impl HttpClient {
             etags: ETagManager::new(),
             verifier,
             mode: config.verification_mode,
+            diagnostics,
         })
+    }
+
+    /// POST to an absolute URL on a different host (diagnostics), without
+    /// ETag, verification, or self-tracking.
+    pub async fn post_absolute(&self, url: &str, body: Value) -> Result<Value> {
+        let mut request = self.client.post(url);
+        for (name, value) in &self.default_headers {
+            request = request.header(*name, value);
+        }
+        let response = request.json(&body).send().await?;
+        let status = response.status().as_u16();
+        let text = response.text().await?;
+        Ok(Self::finish::<Value>(status, &text, VerificationResult::NotRequested)?.value)
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
@@ -296,7 +318,10 @@ impl HttpClient {
             request = request.json(body);
         }
 
-        let response = request.send().await?;
+        let started = Instant::now();
+        let response = request.send().await.inspect_err(|_| {
+            self.track_request(options, started, 0, None, VerificationResult::NotRequested);
+        })?;
         let status = response.status().as_u16();
         let etag = response
             .headers()
@@ -325,6 +350,7 @@ impl HttpClient {
                 etag.as_deref(),
                 b"",
             )?;
+            self.track_request(options, started, status, None, verification);
             return Ok(match self.etags.get(url) {
                 // The cached body is replayed with the FRESH 304 verification
                 // result, mirroring `ETagManager.getHTTPResultFromCacheOrBackend`.
@@ -347,6 +373,13 @@ impl HttpClient {
         }
 
         let body = response.text().await?;
+        let backend_error_code = if status >= 400 {
+            serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|v| v.get("code").and_then(Value::as_i64))
+        } else {
+            None
+        };
         let verification = if (200..300).contains(&status) {
             self.verify_response(
                 options,
@@ -362,6 +395,8 @@ impl HttpClient {
             VerificationResult::NotRequested
         };
 
+        self.track_request(options, started, status, backend_error_code, verification);
+
         // FAILED responses are never cached (`shouldStoreBackendResult`).
         if use_etag && (200..300).contains(&status) && verification != VerificationResult::Failed {
             if let Some(etag) = etag.filter(|e| !e.is_empty()) {
@@ -374,6 +409,44 @@ impl HttpClient {
             body,
             verification,
         })
+    }
+
+    fn track_request(
+        &self,
+        options: &RequestOptions,
+        started: Instant,
+        status: u16,
+        backend_error_code: Option<i64>,
+        verification: VerificationResult,
+    ) {
+        let Some(endpoint_name) = options.endpoint_name else {
+            return;
+        };
+        if !self.diagnostics.is_enabled() {
+            return;
+        }
+        let host = self
+            .base_url
+            .split("//")
+            .nth(1)
+            .unwrap_or(&self.base_url)
+            .to_owned();
+        let verification_name = match verification {
+            VerificationResult::NotRequested => "NOT_REQUESTED",
+            VerificationResult::Verified => "VERIFIED",
+            VerificationResult::VerifiedOnDevice => "VERIFIED_ON_DEVICE",
+            VerificationResult::Failed => "FAILED",
+        };
+        self.diagnostics.track_http_request(
+            &host,
+            endpoint_name,
+            started.elapsed().as_millis() as i64,
+            /* successful */ status != 0 && status < 400,
+            status,
+            backend_error_code,
+            /* etag_hit */ status == 304,
+            verification_name,
+        );
     }
 
     /// Mirrors `SigningManager.verifyResponse`: decides

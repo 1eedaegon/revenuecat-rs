@@ -40,7 +40,7 @@ impl ResponseSigner {
     pub fn new(tamper: bool) -> Self {
         let root = SigningKey::from_bytes(&TEST_ROOT_SEED);
         let mut seed = [0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut seed);
+        rand::fill(&mut seed);
         let intermediate = SigningKey::from_bytes(&seed);
 
         let days = (chrono::Utc::now().timestamp_millis() / MS_PER_DAY + 30) as i32;
@@ -79,7 +79,7 @@ impl ResponseSigner {
         body: &[u8],
     ) -> String {
         let mut salt = [0u8; 16];
-        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
+        rand::fill(&mut salt);
 
         let mut message = Vec::new();
         message.extend_from_slice(&salt);
