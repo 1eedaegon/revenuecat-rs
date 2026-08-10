@@ -1,0 +1,96 @@
+# Watches the official RevenueCat SDKs for new releases and opens/updates an
+# automated PR (via peter-evans/create-pull-request) summarizing what changed
+# in the protocol-relevant paths this crate mirrors.
+#
+# Requirements:
+# - Settings -> Actions -> General -> "Allow GitHub Actions to create and
+#   approve pull requests" must be enabled.
+# - PRs created with the default GITHUB_TOKEN do NOT trigger other workflows
+#   (CI will not run on the bot PR). To get CI on these PRs, set a `PAT`
+#   repo secret (classic token with `repo` scope or a GitHub App token) —
+#   the checkout/PR steps below pick it up automatically.
+
+name: Upstream watch
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT || github.token }}
+
+      - name: Compare upstream releases
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          changed=false
+          summary="upstream/UPSTREAM_DIFF.md"
+          echo "# Upstream SDK changes" > "$summary"
+          echo "" >> "$summary"
+
+          declare -A protocol_paths=(
+            [purchases-ios]="Sources/Networking Sources/Security"
+            [purchases-android]="purchases/src/main/kotlin/com/revenuecat/purchases/common"
+            [purchases-js]="src/networking src/entities"
+          )
+
+          for repo in purchases-ios purchases-android purchases-js; do
+            latest=$(gh api "repos/RevenueCat/$repo/releases/latest" --jq .tag_name)
+            pinned=$(jq -r --arg r "$repo" '.[$r]' upstream/versions.json)
+            if [ "$latest" != "$pinned" ]; then
+              changed=true
+              echo "## $repo: $pinned -> $latest" >> "$summary"
+              echo "" >> "$summary"
+              echo "- Release notes: https://github.com/RevenueCat/$repo/releases/tag/$latest" >> "$summary"
+              echo "- Full diff: https://github.com/RevenueCat/$repo/compare/$pinned...$latest" >> "$summary"
+              # List changed files in the protocol-relevant paths so the
+              # review focuses on wire-format impact.
+              files=$(gh api "repos/RevenueCat/$repo/compare/$pinned...$latest" \
+                --jq '.files[].filename' 2>/dev/null | head -200 || true)
+              relevant=""
+              for prefix in ${protocol_paths[$repo]}; do
+                relevant+=$(echo "$files" | grep "^$prefix" || true)$'\n'
+              done
+              relevant=$(echo "$relevant" | sed '/^$/d')
+              if [ -n "$relevant" ]; then
+                echo "- Protocol-relevant files changed:" >> "$summary"
+                echo '```' >> "$summary"
+                echo "$relevant" | head -40 >> "$summary"
+                echo '```' >> "$summary"
+              else
+                echo "- No changes under protocol-relevant paths." >> "$summary"
+              fi
+              echo "" >> "$summary"
+              jq --arg r "$repo" --arg v "$latest" '.[$r] = $v' upstream/versions.json \
+                > upstream/versions.json.tmp && mv upstream/versions.json.tmp upstream/versions.json
+            fi
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the sync PR
+        if: steps.compare.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.PAT || github.token }}
+          branch: upstream-sync
+          commit-message: |
+            chore: track new upstream RevenueCat SDK releases
+
+            - bump pinned upstream versions in upstream/versions.json
+            - summarize protocol-relevant changes in upstream/UPSTREAM_DIFF.md
+          title: "chore: upstream RevenueCat SDK releases changed"
+          body-path: upstream/UPSTREAM_DIFF.md
+          labels: upstream
+          delete-branch: true
