@@ -807,3 +807,57 @@ fn percent_decode(input: &str) -> String {
     }
     String::from_utf8(out).unwrap_or_else(|_| input.to_owned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_decode_reverses_client_encoding() {
+        assert_eq!(
+            percent_decode("%24RCAnonymousID%3Aabc"),
+            "$RCAnonymousID:abc"
+        );
+        assert_eq!(percent_decode("coins%5F100"), "coins_100");
+        assert_eq!(percent_decode("plain"), "plain");
+        // Malformed sequences fall through untouched.
+        assert_eq!(percent_decode("bad%2"), "bad%2");
+    }
+
+    #[test]
+    fn verified_paths_match_the_official_endpoint_set() {
+        for path in [
+            "/v1/receipts",
+            "/v1/subscribers/identify",
+            "/v1/subscribers/redeem_purchase",
+            "/v1/subscribers/gon",
+            "/v1/subscribers/gon/offerings",
+            "/v1/subscribers/gon/virtual_currencies",
+        ] {
+            assert!(is_verified_path(path), "{path} must be signed");
+        }
+        for path in [
+            "/v1/subscribers/gon/attributes",
+            "/v1/diagnostics",
+            "/rcbilling/v1/subscribers/gon/products",
+        ] {
+            assert!(!is_verified_path(path), "{path} must not be signed");
+        }
+    }
+
+    #[test]
+    fn post_params_hash_validation_rejects_mismatches() {
+        // Arrange: a header hashing DIFFERENT values than the body claims.
+        let mut headers = HeaderMap::new();
+        let wrong = expected_post_params_hash(&[("app_user_id", "other")]);
+        headers.insert("x-post-params-hash", wrong.parse().unwrap());
+
+        // Act / Assert
+        assert!(validate_post_params_hash(&headers, &[("app_user_id", "gon")]).is_some());
+        let right = expected_post_params_hash(&[("app_user_id", "gon")]);
+        headers.insert("x-post-params-hash", right.parse().unwrap());
+        assert!(validate_post_params_hash(&headers, &[("app_user_id", "gon")]).is_none());
+        // Absent header (verification disabled client) is accepted.
+        assert!(validate_post_params_hash(&HeaderMap::new(), &[("k", "v")]).is_none());
+    }
+}

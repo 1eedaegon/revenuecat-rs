@@ -307,6 +307,45 @@ mod tests {
     }
 
     #[test]
+    fn verification_and_diagnostics_are_off_by_default() {
+        let config = Configuration::builder("test_key").build().unwrap();
+        assert_eq!(
+            config.verification_mode,
+            EntitlementVerificationMode::Disabled
+        );
+        assert!(!config.verification_mode.is_enabled());
+        assert!(!config.diagnostics_enabled);
+        assert_eq!(
+            config.diagnostics_url,
+            crate::diagnostics::DEFAULT_DIAGNOSTICS_URL
+        );
+    }
+
+    #[test]
+    fn builder_wires_verification_diagnostics_and_flavor() {
+        let config = Configuration::builder("test_key")
+            .entitlement_verification_mode(EntitlementVerificationMode::Enforced)
+            .verification_root_key("cm9vdA==")
+            .diagnostics_enabled(true)
+            .diagnostics_url("http://127.0.0.1:9/")
+            .platform_flavor("tauri", "2.0")
+            .build()
+            .unwrap();
+        assert_eq!(
+            config.verification_mode,
+            EntitlementVerificationMode::Enforced
+        );
+        assert_eq!(config.verification_root_key.as_deref(), Some("cm9vdA=="));
+        assert!(config.diagnostics_enabled);
+        assert_eq!(
+            config.diagnostics_url, "http://127.0.0.1:9",
+            "trailing slash stripped"
+        );
+        assert_eq!(config.platform_flavor.as_deref(), Some("tauri"));
+        assert_eq!(config.platform_flavor_version.as_deref(), Some("2.0"));
+    }
+
+    #[test]
     fn proxy_url_overrides_base_and_strips_trailing_slash() {
         let config = Configuration::builder("test_key")
             .proxy_url("http://127.0.0.1:9000/")

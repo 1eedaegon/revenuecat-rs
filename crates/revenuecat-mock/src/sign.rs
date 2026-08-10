@@ -134,3 +134,56 @@ pub fn expected_post_params_hash(fields: &[(&str, &str)]) -> String {
         .join(",");
     format!("{keys}:sha256:{hex}")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signature_blob_is_180_bytes_of_key_expiry_sig_salt_payload() {
+        // Arrange
+        let signer = ResponseSigner::new(false);
+
+        // Act
+        let header = signer.sign("test_key", None, "/v1/x", None, "123", None, b"body");
+        let blob = BASE64.decode(header).unwrap();
+
+        // Assert: 32 + 4 + 64 + 16 + 64.
+        assert_eq!(blob.len(), 180);
+        let days = i32::from_le_bytes(blob[32..36].try_into().unwrap());
+        let today = (chrono::Utc::now().timestamp_millis() / MS_PER_DAY) as i32;
+        assert!(days > today, "intermediate key must expire in the future");
+    }
+
+    #[test]
+    fn tampering_corrupts_only_the_payload_signature() {
+        let signer = ResponseSigner::new(false);
+        let clean = BASE64
+            .decode(signer.sign("k", None, "/p", None, "1", None, b""))
+            .unwrap();
+        signer.set_tamper(true);
+        let tampered = BASE64
+            .decode(signer.sign("k", None, "/p", None, "1", None, b""))
+            .unwrap();
+        // Prefix (key/expiry/root-sig) is deterministic per server and must
+        // stay intact; only payload bytes differ (plus the random salt).
+        assert_eq!(clean[..100], tampered[..100]);
+    }
+
+    #[test]
+    fn test_root_public_key_is_deterministic() {
+        assert_eq!(test_root_public_key_b64(), test_root_public_key_b64());
+        assert_eq!(BASE64.decode(test_root_public_key_b64()).unwrap().len(), 32);
+    }
+
+    #[test]
+    fn post_params_hash_joins_values_with_nul() {
+        let header = expected_post_params_hash(&[("a", "1"), ("b", "2")]);
+        assert!(header.starts_with("a,b:sha256:"));
+        let hex = header.rsplit(':').next().unwrap();
+        assert_eq!(hex.len(), 64);
+        assert!(hex
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
+}

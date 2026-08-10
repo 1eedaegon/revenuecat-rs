@@ -115,7 +115,7 @@ ETag 304 replay — mirroring how purchases-js tests against MSW request spies.
 ## How to: run the end-to-end example
 
 ```sh
-cargo run -p revenuecat --example test_store_flow
+cargo run -p revenuecat-rs --example test_store_flow
 ```
 
 ```text

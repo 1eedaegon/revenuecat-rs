@@ -102,3 +102,94 @@ impl DeviceCache {
         *self.virtual_currencies.lock().expect("cache lock poisoned") = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::models::{VirtualCurrencies, VirtualCurrency};
+
+    fn customer_info(user: &str) -> CustomerInfo {
+        let raw = serde_json::json!({
+            "request_date": "2026-01-01T00:00:00Z",
+            "subscriber": {
+                "original_app_user_id": user,
+                "first_seen": "2026-01-01T00:00:00Z",
+            }
+        });
+        CustomerInfo::from_response(raw).unwrap()
+    }
+
+    #[test]
+    fn caches_customer_info_per_user() {
+        // Arrange
+        let cache = DeviceCache::new(Duration::from_secs(300));
+        cache.store_customer_info("a", &customer_info("a"));
+
+        // Act / Assert: user isolation.
+        let (cached, stale) = cache.cached_customer_info("a").unwrap();
+        assert_eq!(cached.original_app_user_id, "a");
+        assert!(!stale, "fresh entry must not be stale");
+        assert!(cache.cached_customer_info("b").is_none());
+    }
+
+    #[test]
+    fn zero_ttl_marks_entries_stale_immediately() {
+        let cache = DeviceCache::new(Duration::ZERO);
+        cache.store_customer_info("a", &customer_info("a"));
+        let (_, stale) = cache.cached_customer_info("a").unwrap();
+        assert!(stale);
+    }
+
+    #[test]
+    fn invalidate_removes_only_that_user() {
+        let cache = DeviceCache::new(Duration::from_secs(300));
+        cache.store_customer_info("a", &customer_info("a"));
+        cache.store_customer_info("b", &customer_info("b"));
+
+        cache.invalidate_customer_info("a");
+
+        assert!(cache.cached_customer_info("a").is_none());
+        assert!(cache.cached_customer_info("b").is_some());
+    }
+
+    #[test]
+    fn clear_drops_all_caches() {
+        // Arrange: every cache slot populated.
+        let cache = DeviceCache::new(Duration::from_secs(300));
+        cache.store_customer_info("a", &customer_info("a"));
+        cache.store_offerings(&crate::models::Offerings {
+            all: Default::default(),
+            current_offering_id: None,
+        });
+        cache.store_virtual_currencies(&VirtualCurrencies {
+            all: [(
+                "GLD".to_owned(),
+                VirtualCurrency {
+                    balance: 1,
+                    code: "GLD".into(),
+                    name: "Gold".into(),
+                    description: None,
+                },
+            )]
+            .into(),
+        });
+
+        // Act
+        cache.clear();
+
+        // Assert
+        assert!(cache.cached_customer_info("a").is_none());
+        assert!(cache.cached_offerings().is_none());
+        assert!(cache.cached_virtual_currencies().is_none());
+    }
+
+    #[test]
+    fn virtual_currencies_report_staleness() {
+        let cache = DeviceCache::new(Duration::ZERO);
+        cache.store_virtual_currencies(&VirtualCurrencies::default());
+        let (_, stale) = cache.cached_virtual_currencies().unwrap();
+        assert!(stale);
+    }
+}

@@ -325,4 +325,58 @@ mod tests {
         assert!(body.get("presented_placement_identifier").is_none());
         assert!(body.get("applied_targeting_rule").is_none());
     }
+
+    #[test]
+    fn restore_receipts_flag_the_restore_initiation_source() {
+        let request = ReceiptRequest {
+            fetch_token: "test_1_x".into(),
+            app_user_id: "u".into(),
+            product_ids: vec!["monthly".into()],
+            is_restore: true,
+            observer_mode: false,
+            initiation_source: "restore",
+            price: None,
+            currency: None,
+            normal_duration: None,
+            presented_offering_identifier: None,
+            presented_placement_identifier: None,
+            applied_targeting_rule: None,
+        };
+
+        let body = request.to_body();
+
+        assert_eq!(body["is_restore"], true);
+        assert_eq!(body["initiation_source"], "restore");
+        // Optional pricing fields disappear entirely.
+        assert!(body.get("price").is_none());
+        assert!(body.get("currency").is_none());
+        assert!(body.get("normal_duration").is_none());
+    }
+
+    #[test]
+    fn targeting_rule_serializes_with_rule_id_and_revision() {
+        let request = ReceiptRequest {
+            fetch_token: "test_1_x".into(),
+            app_user_id: "u".into(),
+            product_ids: vec!["monthly".into()],
+            is_restore: false,
+            observer_mode: false,
+            initiation_source: "purchase",
+            price: None,
+            currency: None,
+            normal_duration: None,
+            presented_offering_identifier: Some("default".into()),
+            presented_placement_identifier: Some("onboarding".into()),
+            applied_targeting_rule: Some(TargetingResponse {
+                rule_id: "abc".into(),
+                revision: 7,
+            }),
+        };
+
+        let body = request.to_body();
+
+        assert_eq!(body["applied_targeting_rule"]["rule_id"], "abc");
+        assert_eq!(body["applied_targeting_rule"]["revision"], 7);
+        assert_eq!(body["presented_placement_identifier"], "onboarding");
+    }
 }
