@@ -1,0 +1,41 @@
+{
+  "current_offering_id": "offering_1",
+  "offerings": [
+    {
+      "identifier": "offering_1",
+      "description": "Offering 1",
+      "metadata": null,
+      "packages": [
+        {
+          "identifier": "$rc_monthly",
+          "platform_product_identifier": "monthly"
+        }
+      ],
+      "paywall_components": null
+    },
+    {
+      "identifier": "offering_2",
+      "description": "Offering 2",
+      "metadata": null,
+      "packages": [
+        {
+          "identifier": "package_2",
+          "platform_product_identifier": "monthly_2"
+        }
+      ],
+      "paywall_components": null
+    }
+  ],
+  "placements": {
+    "fallback_offering_id": "offering_1",
+    "offering_ids_by_placement": {
+      "test_placement_id": "offering_2",
+      "test_null_placement_id": null,
+      "test_unknown_offering_placement_id": "nonexistent_offering"
+    }
+  },
+  "targeting": {
+    "rule_id": "test_rule_id",
+    "revision": 123
+  }
+}

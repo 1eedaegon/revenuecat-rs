@@ -1,0 +1,142 @@
+{
+  "product_details": [
+    {
+      "identifier": "monthly",
+      "product_type": "subscription",
+      "title": "Monthly test",
+      "description": null,
+      "default_purchase_option_id": "base_option",
+      "purchase_options": {
+        "base_option": {
+          "id": "base_option",
+          "price_id": "test_price_id",
+          "base": {
+            "period_duration": "P1M",
+            "cycle_count": 1,
+            "price": {
+              "amount_micros": 3000000,
+              "currency": "USD"
+            }
+          },
+          "trial": null,
+          "intro_price": null,
+          "discount": null
+        }
+      }
+    },
+    {
+      "identifier": "monthly_2",
+      "product_type": "subscription",
+      "title": "Monthly test 2",
+      "description": "monthly description",
+      "default_purchase_option_id": "offer_12345",
+      "purchase_options": {
+        "offer_12345": {
+          "id": "offer_12345",
+          "price_id": "test_price_id",
+          "base": {
+            "period_duration": "P1M",
+            "cycle_count": 1,
+            "price": {
+              "amount_micros": 5000000,
+              "currency": "USD"
+            }
+          },
+          "trial": {
+            "period_duration": "P1W",
+            "cycle_count": 1,
+            "price": null
+          },
+          "intro_price": null,
+          "discount": null
+        }
+      }
+    },
+    {
+      "identifier": "monthly_trial_intro",
+      "product_type": "subscription",
+      "title": "Monthly with Trial and Intro Price",
+      "description": "Monthly subscription with trial and intro pricing",
+      "default_purchase_option_id": "trial_intro_option",
+      "purchase_options": {
+        "trial_intro_option": {
+          "id": "trial_intro_option",
+          "price_id": "test_trial_intro_price_id",
+          "base": {
+            "period_duration": "P1M",
+            "cycle_count": 1,
+            "price": {
+              "amount_micros": 14990000,
+              "currency": "USD"
+            }
+          },
+          "trial": {
+            "period_duration": "P1W",
+            "cycle_count": 1,
+            "price": null
+          },
+          "intro_price": {
+            "period_duration": "P1M",
+            "cycle_count": 6,
+            "price": {
+              "amount_micros": 4990000,
+              "currency": "USD"
+            }
+          },
+          "discount": null
+        }
+      }
+    },
+    {
+      "identifier": "monthly_time_window_discount",
+      "product_type": "subscription",
+      "title": "Monthly with Time Window Discount",
+      "description": "Monthly subscription with time window discount",
+      "default_purchase_option_id": "time_window_discount_option",
+      "purchase_options": {
+        "time_window_discount_option": {
+          "id": "time_window_discount_option",
+          "price_id": "test_time_window_discount_price_id",
+          "base": {
+            "period_duration": "P1M",
+            "cycle_count": 1,
+            "price": {
+              "amount_micros": 10000000,
+              "currency": "USD"
+            }
+          },
+          "trial": null,
+          "intro_price": null,
+          "discount": {
+            "duration_mode": "time_window",
+            "time_window": "P3M",
+            "discount_type": "percentage",
+            "percentage": 30,
+            "fixed_amount_micros": null,
+            "amount_micros": 7000000,
+            "currency": "USD",
+            "name": "Holiday Sale 30%"
+          }
+        }
+      }
+    },
+    {
+      "identifier": "test-consumable-product",
+      "product_type": "consumable",
+      "title": "Consumable test",
+      "description": "Consumable description",
+      "default_purchase_option_id": "offer_12345",
+      "purchase_options": {
+        "offer_12345": {
+          "id": "base_option",
+          "price_id": "test_price_id",
+          "base_price": {
+            "amount_micros": 1000000,
+            "currency": "USD"
+          },
+          "discount": null
+        }
+      }
+    }
+  ]
+}
