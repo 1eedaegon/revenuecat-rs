@@ -1,0 +1,29 @@
+[package]
+name = "revenuecat"
+description = "Unofficial RevenueCat SDK for Rust — protocol-compatible with the official mobile SDKs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+keywords = ["revenuecat", "iap", "subscriptions", "billing", "tauri"]
+categories = ["api-bindings"]
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+percent-encoding = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+revenuecat-mock = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

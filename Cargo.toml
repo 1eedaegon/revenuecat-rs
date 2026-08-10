@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/revenuecat",
+    "crates/revenuecat-mock",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.85"
+authors = ["Gon <d8726243@gmail.com>"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# unwrap is banned in library code; tests are exempted via clippy.toml
+# (allow-unwrap-in-tests). Use expect() with a reason, or propagate errors.
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+dbg_macro = "deny"
+
+[workspace.dependencies]
+revenuecat = { path = "crates/revenuecat" }
+revenuecat-mock = { path = "crates/revenuecat-mock" }
+
+async-trait = "0.1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+percent-encoding = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
