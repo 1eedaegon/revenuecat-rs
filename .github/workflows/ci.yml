@@ -7,16 +7,18 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Compiler-level build cache on top of Swatinem's cargo cache.
-  RUSTC_WRAPPER: sccache
-  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   lint-and-test:
     name: Lint + test (SDK crates, Linux)
     runs-on: ubuntu-latest
+    # Compiler-level build cache; job-scoped so the containerized
+    # cargo-deny action does not inherit a missing sccache binary.
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -32,8 +34,11 @@ jobs:
   tauri-demo:
     name: Full workspace incl. Tauri demo (macOS)
     runs-on: macos-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -48,7 +53,7 @@ jobs:
     name: Dependency audit (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories licenses bans sources
