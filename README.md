@@ -25,7 +25,7 @@ backend.*
 | `crates/tauri-plugin-revenuecat` | Tauri 2 mobile plugin: StoreKit 2 (Swift) / Play Billing (Kotlin) shims behind the `StoreBilling` trait — code-complete, device E2E pending |
 | `demo/tauri-app` | Tauri 2 desktop demo driving the SDK through IPC commands |
 
-## How to: use the SDK
+## Quick start
 
 ```toml
 [dependencies]
@@ -70,7 +70,7 @@ Point the SDK anywhere (staging, the bundled mock) with
 `.proxy_url("http://127.0.0.1:PORT")` — same semantics as `Purchases.proxyURL`
 in the official SDKs.
 
-## How to: verify responses (Trusted Entitlements)
+## Trusted Entitlements
 
 Response-signature verification (Ed25519) is off by default, mirroring the
 official SDKs:
@@ -98,7 +98,7 @@ Redeem web-purchase deep links with
 `Purchases::parse_web_purchase_redemption(url)` +
 `purchases.redeem_web_purchase(&r)`.
 
-## How to: run the tests
+## Testing
 
 ```sh
 cargo test --workspace          # unit + integration + Tauri IPC tests
@@ -112,7 +112,7 @@ SDK stack against `revenuecat-mock` and asserts **exact wire behavior** —
 request paths, `Authorization`/`X-Platform-*` headers, receipt-body fields,
 ETag 304 replay — mirroring how purchases-js tests against MSW request spies.
 
-## How to: run the end-to-end example
+## Example
 
 ```sh
 cargo run -p revenuecat-rs --example test_store_flow
@@ -131,7 +131,7 @@ subscriptions     {"monthly"}
 one-time          1 transaction(s)
 ```
 
-## How to: run the Tauri demo
+## Tauri demo
 
 ```sh
 cargo run -p revenuecat-tauri-demo
