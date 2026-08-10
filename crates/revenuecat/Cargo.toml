@@ -8,6 +8,7 @@ rust-version.workspace = true
 authors.workspace = true
 keywords = ["revenuecat", "iap", "subscriptions", "billing", "tauri"]
 categories = ["api-bindings"]
+readme = "../../README.md"
 
 [lints]
 workspace = true

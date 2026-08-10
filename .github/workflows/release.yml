@@ -1,0 +1,32 @@
+name: Release to crates.io
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Verify and publish revenuecat
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify tag matches workspace version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CRATE_VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "revenuecat") | .version')
+          echo "tag=$TAG_VERSION crate=$CRATE_VERSION"
+          test "$TAG_VERSION" = "$CRATE_VERSION"
+
+      - name: Test before publishing
+        run: cargo test -p revenuecat -p revenuecat-mock
+
+      - name: Publish
+        run: cargo publish -p revenuecat --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
