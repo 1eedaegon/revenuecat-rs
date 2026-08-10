@@ -1,0 +1,29 @@
+[package]
+name = "tauri-plugin-revenuecat"
+description = "Tauri 2 mobile plugin bridging StoreKit 2 / Play Billing into the revenuecat crate's StoreBilling seam"
+# Unpublished until the native shims are device-verified.
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+links = "tauri-plugin-revenuecat"
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+revenuecat-rs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2", features = [] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
