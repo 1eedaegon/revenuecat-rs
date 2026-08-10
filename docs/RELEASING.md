@@ -1,15 +1,10 @@
 # Releasing (maintainers)
 
-CI (`.github/workflows/ci.yml`) runs fmt + clippy + tests + `cargo deny` on
-every push. Publishing to crates.io is tag-driven
-(`.github/workflows/release.yml`):
+Publishing to crates.io is tag-driven (`.github/workflows/release.yml`):
+bump `[workspace.package] version`, then
 
 ```sh
-# once: add your crates.io token as a repo secret
-gh secret set CARGO_REGISTRY_TOKEN
-
-# release: bump [workspace.package] version, then
-git tag v0.2.0 && git push origin v0.2.0
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 The release workflow verifies the tag matches `Cargo.toml`, re-runs the test
