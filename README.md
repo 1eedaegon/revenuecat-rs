@@ -28,7 +28,7 @@ backend.*
 
 ```toml
 [dependencies]
-revenuecat = "0.1"
+revenuecat-rs = "0.1"   # imported in code as `revenuecat`
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -252,7 +252,7 @@ git tag v0.1.0 && git push origin v0.1.0
 ```
 
 The workflow verifies the tag matches `Cargo.toml`, re-runs the test suite,
-and `cargo publish -p revenuecat`.
+and `cargo publish -p revenuecat-rs`.
 
 ## License
 

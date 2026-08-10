@@ -1,4 +1,4 @@
-//! # revenuecat
+//! # revenuecat-rs
 //!
 //! Unofficial RevenueCat SDK for Rust, protocol-compatible with the official
 //! [purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT).

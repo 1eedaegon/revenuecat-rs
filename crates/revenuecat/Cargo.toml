@@ -1,5 +1,5 @@
 [package]
-name = "revenuecat"
+name = "revenuecat-rs"
 description = "Unofficial RevenueCat SDK for Rust — protocol-compatible with the official mobile SDKs"
 version.workspace = true
 edition.workspace = true
@@ -12,6 +12,11 @@ readme = "../../README.md"
 
 [lints]
 workspace = true
+
+# Package is `revenuecat-rs` on crates.io; the library keeps the ergonomic
+# import name: `use revenuecat::...`.
+[lib]
+name = "revenuecat"
 
 [dependencies]
 async-trait = { workspace = true }

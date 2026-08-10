@@ -25,7 +25,7 @@ todo = "deny"
 dbg_macro = "deny"
 
 [workspace.dependencies]
-revenuecat = { path = "crates/revenuecat" }
+revenuecat-rs = { path = "crates/revenuecat" }
 revenuecat-mock = { path = "crates/revenuecat-mock" }
 
 async-trait = "0.1"

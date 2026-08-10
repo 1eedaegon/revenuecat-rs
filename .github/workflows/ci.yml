@@ -21,9 +21,9 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
-        run: cargo clippy -p revenuecat -p revenuecat-mock --all-targets -- -D warnings
+        run: cargo clippy -p revenuecat-rs -p revenuecat-mock --all-targets -- -D warnings
       - name: tests
-        run: cargo test -p revenuecat -p revenuecat-mock
+        run: cargo test -p revenuecat-rs -p revenuecat-mock
 
   tauri-demo:
     name: Full workspace incl. Tauri demo (macOS)
