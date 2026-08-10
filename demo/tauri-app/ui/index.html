@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>revenuecat-rs × Tauri</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>revenuecat-rs</h1>
+        <p class="tagline">Rust SDK &middot; Test Store &middot; embedded mock backend</p>
+      </div>
+    </div>
+    <div class="session" aria-live="polite">
+      <span id="user-chip" class="chip">…</span>
+      <button id="login-btn" class="ghost">Log in</button>
+      <button id="logout-btn" class="ghost" hidden>Log out</button>
+    </div>
+  </header>
+
+  <main class="ledger">
+    <section class="panel catalog" aria-labelledby="catalog-heading">
+      <h2 id="catalog-heading">Catalog <span class="rule"></span></h2>
+      <p class="panel-note">Packages resolved from <code>/v1/subscribers/&hellip;/offerings</code> joined with Web Billing products.</p>
+      <ul id="packages" class="packages"></ul>
+      <div class="row-actions">
+        <button id="restore-btn" class="ghost">Restore purchases</button>
+      </div>
+    </section>
+
+    <section class="panel customer" aria-labelledby="customer-heading">
+      <h2 id="customer-heading">Customer <span class="rule"></span></h2>
+      <div id="entitlement-stamp" class="stamp none" role="status">NO ENTITLEMENT</div>
+      <dl class="facts">
+        <dt>App user id</dt><dd id="fact-user" class="mono">–</dd>
+        <dt>Active subscriptions</dt><dd id="fact-subs" class="mono">–</dd>
+        <dt>Latest expiration</dt><dd id="fact-expiry" class="mono">–</dd>
+      </dl>
+      <h3>Receipt lines</h3>
+      <ul id="lines" class="lines"><li class="empty">No purchases yet.</li></ul>
+    </section>
+  </main>
+
+  <footer class="wire" aria-labelledby="wire-heading">
+    <h2 id="wire-heading">Wire log</h2>
+    <ol id="log" class="log" aria-live="polite"></ol>
+  </footer>
+
+  <dialog id="login-dialog">
+    <form method="dialog" id="login-form">
+      <label for="login-id">App user id</label>
+      <input id="login-id" name="id" type="text" placeholder="gon" required autocomplete="off" />
+      <menu>
+        <button value="cancel" class="ghost" formnovalidate>Cancel</button>
+        <button value="ok" class="primary">Log in</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="main.js" defer></script>
+</body>
+</html>

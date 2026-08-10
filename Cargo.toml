@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/revenuecat",
     "crates/revenuecat-mock",
+    "demo/tauri-app/src-tauri",
 ]
 
 [workspace.package]

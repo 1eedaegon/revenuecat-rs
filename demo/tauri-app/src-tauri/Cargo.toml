@@ -1,0 +1,30 @@
+[package]
+name = "revenuecat-tauri-demo"
+description = "Tauri 2 demo app for the revenuecat crate, running against an embedded mock backend"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "revenuecat_tauri_demo"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+revenuecat = { workspace = true }
+revenuecat-mock = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
