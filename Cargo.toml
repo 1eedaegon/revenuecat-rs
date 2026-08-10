@@ -30,7 +30,7 @@ revenuecat-mock = { path = "crates/revenuecat-mock" }
 
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "fast"] }
 rand = "0.8"
