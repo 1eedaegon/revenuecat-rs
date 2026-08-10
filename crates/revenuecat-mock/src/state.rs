@@ -69,6 +69,15 @@ pub struct MockVirtualCurrency {
     pub balance: i64,
 }
 
+/// A configured web-purchase redemption token.
+#[derive(Debug, Clone)]
+pub enum MockRedemption {
+    /// Redeemable once; grants the product to the redeeming user.
+    Valid { product_id: String },
+    /// Always answers 7853 with this obfuscated email.
+    Expired { obfuscated_email: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct MockOffering {
     pub identifier: String,
@@ -114,6 +123,10 @@ pub struct ServerState {
     pub offerings: Vec<MockOffering>,
     pub current_offering_id: Option<String>,
     pub virtual_currencies: Vec<MockVirtualCurrency>,
+    pub signer: crate::sign::ResponseSigner,
+    pub(crate) redemptions: Mutex<HashMap<String, MockRedemption>>,
+    /// redemption token -> app_user_id that redeemed it.
+    pub(crate) redeemed_by: Mutex<HashMap<String, String>>,
     pub(crate) subscribers: Mutex<HashMap<String, Subscriber>>,
     /// fetch_token -> app_user_id, to reject token reuse across users.
     pub(crate) used_tokens: Mutex<HashMap<String, String>>,
@@ -126,12 +139,17 @@ impl ServerState {
         offerings: Vec<MockOffering>,
         current_offering_id: Option<String>,
         virtual_currencies: Vec<MockVirtualCurrency>,
+        redemptions: HashMap<String, MockRedemption>,
+        tamper_signatures: bool,
     ) -> Self {
         Self {
             products,
             offerings,
             current_offering_id,
             virtual_currencies,
+            signer: crate::sign::ResponseSigner::new(tamper_signatures),
+            redemptions: Mutex::new(redemptions),
+            redeemed_by: Mutex::new(HashMap::new()),
             subscribers: Mutex::new(HashMap::new()),
             used_tokens: Mutex::new(HashMap::new()),
             requests: Mutex::new(Vec::new()),
