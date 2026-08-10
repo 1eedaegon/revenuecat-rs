@@ -8,9 +8,10 @@ use std::collections::BTreeMap;
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, ErrorCode, Result};
-use crate::http::{encode_path_segment, HttpClient};
+use crate::http::{encode_path_segment, HttpClient, RequestOptions};
 use crate::models::{
-    CustomerInfo, OfferingsResponse, ProductsResponse, TargetingResponse, VirtualCurrencies,
+    CustomerInfo, OfferingsResponse, ProductsResponse, RedeemResult, TargetingResponse,
+    VirtualCurrencies,
 };
 
 /// Body for `POST /v1/receipts`. Field names match purchases-android's
@@ -91,29 +92,46 @@ impl Backend {
 
     /// `GET /v1/subscribers/{id}` — fetches (and server-side creates, for new
     /// ids) the subscriber, returning server-computed CustomerInfo.
+    /// Signature-verified with a nonce, like the official SDKs.
     pub async fn get_customer_info(&self, app_user_id: &str) -> Result<CustomerInfo> {
         let path = format!("/v1/subscribers/{}", encode_path_segment(app_user_id));
-        let raw: Value = self.http.get(&path).await?;
-        CustomerInfo::from_response(raw)
+        let response = self
+            .http
+            .get_with::<Value>(&path, RequestOptions::verified_with_nonce())
+            .await?;
+        CustomerInfo::from_response_with_verification(response.value, response.verification)
     }
 
     /// `POST /v1/receipts` — records a purchase; retryable on 429 like the
     /// official SDKs.
     pub async fn post_receipt(&self, request: &ReceiptRequest) -> Result<CustomerInfo> {
+        let options = RequestOptions {
+            retryable: true,
+            verify: true,
+            nonce: true,
+            signed_fields: vec![
+                ("app_user_id", request.app_user_id.clone()),
+                ("fetch_token", request.fetch_token.clone()),
+            ],
+        };
         let response = self
             .http
-            .post_with_status::<Value>("/v1/receipts", request.to_body(), true)
+            .post_with::<Value>("/v1/receipts", request.to_body(), options)
             .await?;
-        CustomerInfo::from_response(response.value)
+        CustomerInfo::from_response_with_verification(response.value, response.verification)
     }
 
-    /// `GET /v1/subscribers/{id}/offerings`.
+    /// `GET /v1/subscribers/{id}/offerings` — signature-verified, no nonce.
     pub async fn get_offerings(&self, app_user_id: &str) -> Result<OfferingsResponse> {
         let path = format!(
             "/v1/subscribers/{}/offerings",
             encode_path_segment(app_user_id)
         );
-        self.http.get(&path).await
+        Ok(self
+            .http
+            .get_with(&path, RequestOptions::verified())
+            .await?
+            .value)
     }
 
     /// `GET /rcbilling/v1/subscribers/{id}/products?id=a&id=b` — Web Billing
@@ -149,12 +167,24 @@ impl Backend {
             ));
         }
         let body = json!({"app_user_id": app_user_id, "new_app_user_id": new_app_user_id});
+        let options = RequestOptions {
+            verify: true,
+            nonce: true,
+            signed_fields: vec![
+                ("app_user_id", app_user_id.to_owned()),
+                ("new_app_user_id", new_app_user_id.to_owned()),
+            ],
+            ..RequestOptions::default()
+        };
         let response = self
             .http
-            .post_with_status::<Value>("/v1/subscribers/identify", body, false)
+            .post_with::<Value>("/v1/subscribers/identify", body, options)
             .await?;
         let created = response.status == 201;
-        Ok((CustomerInfo::from_response(response.value)?, created))
+        Ok((
+            CustomerInfo::from_response_with_verification(response.value, response.verification)?,
+            created,
+        ))
     }
 
     /// `POST /v1/subscribers/{id}/attributes`. `None` values delete keys.
@@ -181,13 +211,67 @@ impl Backend {
         Ok(())
     }
 
-    /// `GET /v1/subscribers/{id}/virtual_currencies`.
+    /// `GET /v1/subscribers/{id}/virtual_currencies` — verified with nonce.
     pub async fn get_virtual_currencies(&self, app_user_id: &str) -> Result<VirtualCurrencies> {
         let path = format!(
             "/v1/subscribers/{}/virtual_currencies",
             encode_path_segment(app_user_id)
         );
-        self.http.get(&path).await
+        Ok(self
+            .http
+            .get_with(&path, RequestOptions::verified_with_nonce())
+            .await?
+            .value)
+    }
+
+    /// `POST /v1/subscribers/redeem_purchase` — attaches a web purchase to
+    /// this app user. Typed outcomes follow `RedeemWebPurchaseListener.Result`:
+    /// backend 7849 => InvalidToken, 7853 => Expired (with the
+    /// server-obfuscated email), 7852 => PurchaseBelongsToOtherUser.
+    pub async fn post_redeem_web_purchase(
+        &self,
+        app_user_id: &str,
+        redemption_token: &str,
+    ) -> Result<RedeemResult> {
+        let body = json!({"redemption_token": redemption_token, "app_user_id": app_user_id});
+        let options = RequestOptions {
+            retryable: true,
+            verify: true,
+            nonce: true,
+            ..RequestOptions::default()
+        };
+        let response = self
+            .http
+            .post_with::<Value>("/v1/subscribers/redeem_purchase", body, options)
+            .await;
+
+        match response {
+            Ok(response) => Ok(RedeemResult::Success {
+                customer_info: CustomerInfo::from_response_with_verification(
+                    response.value,
+                    response.verification,
+                )?,
+            }),
+            Err(error) => Ok(match error.backend_code {
+                Some(7849) => RedeemResult::InvalidToken,
+                Some(7852) => RedeemResult::PurchaseBelongsToOtherUser,
+                Some(7853) => {
+                    let obfuscated_email = error
+                        .error_body
+                        .as_ref()
+                        .and_then(|body| body.get("purchase_redemption_error_info"))
+                        .and_then(|info| info.get("obfuscated_email"))
+                        .and_then(|email| email.as_str())
+                        .map(str::to_owned);
+                    match obfuscated_email {
+                        Some(obfuscated_email) => RedeemResult::Expired { obfuscated_email },
+                        // Missing email degrades to Error, matching Android.
+                        None => RedeemResult::Error { error },
+                    }
+                }
+                _ => RedeemResult::Error { error },
+            }),
+        }
     }
 }
 

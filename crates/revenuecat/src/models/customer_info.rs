@@ -61,6 +61,14 @@ pub enum VerificationResult {
     Failed,
 }
 
+impl VerificationResult {
+    /// Mirrors `VerificationResult.isVerified`: true for `Verified` and
+    /// `VerifiedOnDevice` only.
+    pub fn is_verified(&self) -> bool {
+        matches!(self, Self::Verified | Self::VerifiedOnDevice)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Wire types (exact response field names)
 // ---------------------------------------------------------------------------
@@ -255,6 +263,16 @@ pub struct CustomerInfo {
 
 impl CustomerInfo {
     pub fn from_response(raw: serde_json::Value) -> Result<Self> {
+        Self::from_response_with_verification(raw, VerificationResult::NotRequested)
+    }
+
+    /// Parses the subscriber envelope and stamps the given Trusted
+    /// Entitlements verification result on the entitlement containers,
+    /// mirroring how the official SDKs attach `VerificationResult`.
+    pub fn from_response_with_verification(
+        raw: serde_json::Value,
+        verification: VerificationResult,
+    ) -> Result<Self> {
         let response: SubscriberResponse = serde_json::from_value(raw.clone())
             .map_err(|e| Error::with_underlying(ErrorCode::CustomerInfoError, e.to_string()))?;
         let request_date = response.request_date;
@@ -277,13 +295,12 @@ impl CustomerInfo {
                 .iter()
                 .map(|(id, ent)| {
                     let backing = subscriber.subscriptions.get(&ent.product_identifier);
-                    (
-                        id.clone(),
-                        build_entitlement(id, ent, backing, request_date),
-                    )
+                    let mut info = build_entitlement(id, ent, backing, request_date);
+                    info.verification = verification;
+                    (id.clone(), info)
                 })
                 .collect(),
-            verification: VerificationResult::NotRequested,
+            verification,
         };
 
         let non_subscription_transactions = subscriber

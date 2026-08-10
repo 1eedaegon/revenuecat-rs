@@ -110,6 +110,10 @@ pub struct Error {
     /// Numeric backend error code (`{"code": 7259, ...}`) when the error
     /// originated from the RevenueCat API.
     pub backend_code: Option<i64>,
+    /// The full parsed error body, for flows that read extra fields (e.g.
+    /// `purchase_redemption_error_info.obfuscated_email`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_body: Option<serde_json::Value>,
 }
 
 impl Error {
@@ -119,6 +123,7 @@ impl Error {
             message: message.into(),
             underlying: None,
             backend_code: None,
+            error_body: None,
         }
     }
 
@@ -128,6 +133,7 @@ impl Error {
             message: code.description().to_owned(),
             underlying: Some(underlying.into()),
             backend_code: None,
+            error_body: None,
         }
     }
 
@@ -137,6 +143,7 @@ impl Error {
             message: backend_message.into(),
             underlying: None,
             backend_code: Some(backend_code),
+            error_body: None,
         }
     }
 }

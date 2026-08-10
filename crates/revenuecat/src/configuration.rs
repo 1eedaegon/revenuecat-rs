@@ -55,6 +55,25 @@ impl Platform {
     }
 }
 
+/// Trusted Entitlements response-signature verification mode, mirroring
+/// `EntitlementVerificationMode` in the official SDKs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EntitlementVerificationMode {
+    /// No verification; responses carry `VerificationResult::NotRequested`.
+    #[default]
+    Disabled,
+    /// Verify and report the result, but never fail a request over it.
+    Informational,
+    /// Verification failures surface as `SignatureVerificationError`.
+    Enforced,
+}
+
+impl EntitlementVerificationMode {
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+}
+
 /// Store kind encoded in the API key prefix, mirroring `APIKeyValidator`
 /// (Android) and `Configuration.validate(apiKey:)` (iOS).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +117,10 @@ pub struct Configuration {
     pub(crate) http_timeout: Duration,
     pub(crate) cache_ttl: Duration,
     pub(crate) store_billing: Option<Arc<dyn StoreBilling>>,
+    pub(crate) verification_mode: EntitlementVerificationMode,
+    /// Base64 Ed25519 root public key; `None` uses RevenueCat's production
+    /// root key. Overridable so tests/mocks can sign with their own chain.
+    pub(crate) verification_root_key: Option<String>,
 }
 
 impl Configuration {
@@ -132,6 +155,8 @@ pub struct ConfigurationBuilder {
     http_timeout: Duration,
     cache_ttl: Duration,
     store_billing: Option<Arc<dyn StoreBilling>>,
+    verification_mode: EntitlementVerificationMode,
+    verification_root_key: Option<String>,
 }
 
 impl ConfigurationBuilder {
@@ -146,6 +171,8 @@ impl ConfigurationBuilder {
             http_timeout: DEFAULT_HTTP_TIMEOUT,
             cache_ttl: DEFAULT_CACHE_TTL,
             store_billing: None,
+            verification_mode: EntitlementVerificationMode::default(),
+            verification_root_key: None,
         }
     }
 
@@ -197,6 +224,21 @@ impl ConfigurationBuilder {
         self
     }
 
+    /// Enables Trusted Entitlements response-signature verification,
+    /// mirroring `entitlementVerificationMode` in the official SDKs.
+    pub fn entitlement_verification_mode(mut self, mode: EntitlementVerificationMode) -> Self {
+        self.verification_mode = mode;
+        self
+    }
+
+    /// Overrides the Ed25519 root public key (base64) used for signature
+    /// verification. Defaults to RevenueCat's production root key; override
+    /// only when testing against a mock that signs with its own chain.
+    pub fn verification_root_key(mut self, base64_key: impl Into<String>) -> Self {
+        self.verification_root_key = Some(base64_key.into());
+        self
+    }
+
     pub fn build(self) -> Result<Configuration> {
         if self.api_key.trim().is_empty() {
             return Err(Error::new(
@@ -219,6 +261,8 @@ impl ConfigurationBuilder {
             http_timeout: self.http_timeout,
             cache_ttl: self.cache_ttl,
             store_billing: self.store_billing,
+            verification_mode: self.verification_mode,
+            verification_root_key: self.verification_root_key,
         })
     }
 }

@@ -1,6 +1,7 @@
 //! HTTP client speaking the RevenueCat wire protocol: Bearer auth, `X-*`
-//! device headers, custom ETag caching, and `{"code", "message"}` error
-//! bodies. Mirrors `HTTPClient` from purchases-android/ios.
+//! device headers, custom ETag caching, `{"code", "message"}` error bodies,
+//! and Trusted Entitlements signature verification. Mirrors `HTTPClient`
+//! from purchases-android/ios.
 
 use std::time::Duration;
 
@@ -9,9 +10,18 @@ use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::configuration::Configuration;
+use crate::configuration::{Configuration, EntitlementVerificationMode};
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::etag::ETagManager;
+use crate::models::VerificationResult;
+use crate::security::{
+    generate_nonce, post_params_hash, SignatureVerifier, VerifyParams, ROOT_PUBLIC_KEY_B64,
+};
+
+pub const SIGNATURE_HEADER: &str = "X-Signature";
+pub const REQUEST_TIME_HEADER: &str = "X-RevenueCat-Request-Time";
+pub const NONCE_HEADER: &str = "X-Nonce";
+pub const POST_PARAMS_HASH_HEADER: &str = "X-Post-Params-Hash";
 
 /// Backoff schedule for retryable requests (iOS `HTTPClient` retries
 /// `POST /v1/receipts` on 429 with 0 / 0.75s / 3s delays, max 3 attempts).
@@ -33,18 +43,53 @@ pub fn encode_path_segment(segment: &str) -> String {
     utf8_percent_encode(segment, PATH_SEGMENT).to_string()
 }
 
+/// Per-request protocol options, mirroring purchases-android's per-endpoint
+/// `isRetryable` / `supportsSignatureVerification` / `needsNonceToPerformSigning`
+/// flags plus `postFieldsToSign`.
+#[derive(Debug, Default)]
+pub struct RequestOptions {
+    pub retryable: bool,
+    /// Endpoint supports Trusted Entitlements verification.
+    pub verify: bool,
+    /// Endpoint sends an `X-Nonce` when verification is enabled.
+    pub nonce: bool,
+    /// `(field_name, value)` pairs hashed into `X-Post-Params-Hash`.
+    pub signed_fields: Vec<(&'static str, String)>,
+}
+
+impl RequestOptions {
+    pub fn verified() -> Self {
+        Self {
+            verify: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn verified_with_nonce() -> Self {
+        Self {
+            verify: true,
+            nonce: true,
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct HttpClient {
     client: reqwest::Client,
     base_url: String,
     default_headers: Vec<(&'static str, String)>,
     etags: ETagManager,
+    verifier: Option<SignatureVerifier>,
+    mode: EntitlementVerificationMode,
 }
 
 #[derive(Debug)]
 pub struct HttpResponse<T> {
     pub value: T,
     pub status: u16,
+    /// Trusted Entitlements verification outcome for this response.
+    pub verification: VerificationResult,
 }
 
 impl HttpClient {
@@ -68,35 +113,59 @@ impl HttpClient {
             default_headers.push(("X-Platform-Flavor-Version", version.clone()));
         }
 
+        let verifier = if config.verification_mode.is_enabled() {
+            let root = config
+                .verification_root_key
+                .as_deref()
+                .unwrap_or(ROOT_PUBLIC_KEY_B64);
+            Some(
+                SignatureVerifier::new(root, &config.api_key)
+                    .map_err(|e| Error::with_underlying(ErrorCode::ConfigurationError, e))?,
+            )
+        } else {
+            None
+        };
+
         Ok(Self {
             client,
             base_url: config.base_url.clone(),
             default_headers,
             etags: ETagManager::new(),
+            verifier,
+            mode: config.verification_mode,
         })
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        Ok(self.request(Method::GET, path, None, false).await?.value)
+        Ok(self.get_with(path, RequestOptions::default()).await?.value)
+    }
+
+    pub async fn get_with<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        options: RequestOptions,
+    ) -> Result<HttpResponse<T>> {
+        self.request(Method::GET, path, None, options).await
     }
 
     pub async fn post<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T> {
         Ok(self
-            .request(Method::POST, path, Some(body), false)
+            .post_with(path, body, RequestOptions::default())
             .await?
             .value)
     }
 
-    /// POST that also surfaces the HTTP status (login needs 201 => "created")
-    /// and retries on 429 like the official SDKs' receipt posting.
-    pub async fn post_with_status<T: DeserializeOwned>(
+    pub async fn post_with<T: DeserializeOwned>(
         &self,
         path: &str,
         body: Value,
-        retryable: bool,
+        options: RequestOptions,
     ) -> Result<HttpResponse<T>> {
-        self.request(Method::POST, path, Some(body), retryable)
-            .await
+        self.request(Method::POST, path, Some(body), options).await
+    }
+
+    fn verifying(&self, options: &RequestOptions) -> bool {
+        options.verify && self.verifier.is_some()
     }
 
     async fn request<T: DeserializeOwned>(
@@ -104,33 +173,64 @@ impl HttpClient {
         method: Method,
         path: &str,
         body: Option<Value>,
-        retryable: bool,
+        options: RequestOptions,
     ) -> Result<HttpResponse<T>> {
         let url = format!("{}{}", self.base_url, path);
         let use_etag = method == Method::GET;
+        let post_params_hash_value =
+            if self.verifying(&options) && !options.signed_fields.is_empty() {
+                let fields: Vec<(&str, &str)> = options
+                    .signed_fields
+                    .iter()
+                    .map(|(name, value)| (*name, value.as_str()))
+                    .collect();
+                Some(post_params_hash(&fields))
+            } else {
+                None
+            };
 
         let mut attempt = 0;
         loop {
             let outcome = self
                 .perform(
                     method.clone(),
+                    path,
                     &url,
                     body.as_ref(),
                     use_etag,
                     /* force_refresh */ false,
+                    &options,
+                    post_params_hash_value.as_deref(),
                 )
                 .await?;
             match outcome {
-                Outcome::Resolved { status, body } => {
-                    return Self::finish::<T>(status, &body);
+                Outcome::Resolved {
+                    status,
+                    body,
+                    verification,
+                } => {
+                    return Self::finish::<T>(status, &body, verification);
                 }
                 Outcome::NotModifiedWithoutCache => {
                     // Mirror ETagManager: one retry with an empty ETag header.
                     let retried = self
-                        .perform(method.clone(), &url, body.as_ref(), use_etag, true)
+                        .perform(
+                            method.clone(),
+                            path,
+                            &url,
+                            body.as_ref(),
+                            use_etag,
+                            true,
+                            &options,
+                            post_params_hash_value.as_deref(),
+                        )
                         .await?;
                     return match retried {
-                        Outcome::Resolved { status, body } => Self::finish::<T>(status, &body),
+                        Outcome::Resolved {
+                            status,
+                            body,
+                            verification,
+                        } => Self::finish::<T>(status, &body, verification),
                         Outcome::NotModifiedWithoutCache => Err(Error::new(
                             ErrorCode::UnexpectedBackendResponseError,
                             "Received 304 without a cached response after ETag retry.",
@@ -142,7 +242,7 @@ impl HttpClient {
                     };
                 }
                 Outcome::RateLimited { retry_after } => {
-                    if !retryable || attempt + 1 >= RETRY_BACKOFF.len() {
+                    if !options.retryable || attempt + 1 >= RETRY_BACKOFF.len() {
                         return Err(Error::new(
                             ErrorCode::NetworkError,
                             "The server is rate limiting requests (HTTP 429).",
@@ -156,20 +256,39 @@ impl HttpClient {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn perform(
         &self,
         method: Method,
+        path: &str,
         url: &str,
         body: Option<&Value>,
         use_etag: bool,
         force_refresh: bool,
+        options: &RequestOptions,
+        post_params_hash_value: Option<&str>,
     ) -> Result<Outcome> {
         let mut request = self.client.request(method, url);
         for (name, value) in &self.default_headers {
             request = request.header(*name, value);
         }
+
+        let verifying = self.verifying(options);
+        let nonce = if verifying && options.nonce {
+            Some(generate_nonce())
+        } else {
+            None
+        };
+        if let Some(nonce) = &nonce {
+            request = request.header(NONCE_HEADER, nonce);
+        }
+        if let Some(hash) = post_params_hash_value {
+            request = request.header(POST_PARAMS_HASH_HEADER, hash);
+        }
         if use_etag {
-            for (name, value) in self.etags.request_headers(url, force_refresh) {
+            // A cached body may only be revalidated via ETag when it was
+            // verified (or verification is off), per `shouldUseETag`.
+            for (name, value) in self.etags.request_headers(url, force_refresh, verifying) {
                 request = request.header(name, value);
             }
         }
@@ -179,12 +298,40 @@ impl HttpClient {
 
         let response = request.send().await?;
         let status = response.status().as_u16();
+        let etag = response
+            .headers()
+            .get(super::etag::ETAG_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let signature = response
+            .headers()
+            .get(SIGNATURE_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let request_time = response
+            .headers()
+            .get(REQUEST_TIME_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
 
         if status == 304 {
+            let verification = self.verify_response(
+                options,
+                path,
+                nonce.as_deref(),
+                post_params_hash_value,
+                signature.as_deref(),
+                request_time.as_deref(),
+                etag.as_deref(),
+                b"",
+            )?;
             return Ok(match self.etags.get(url) {
+                // The cached body is replayed with the FRESH 304 verification
+                // result, mirroring `ETagManager.getHTTPResultFromCacheOrBackend`.
                 Some(cached) => Outcome::Resolved {
                     status: cached.status,
                     body: cached.body,
+                    verification,
                 },
                 None => Outcome::NotModifiedWithoutCache,
             });
@@ -199,30 +346,110 @@ impl HttpClient {
             return Ok(Outcome::RateLimited { retry_after });
         }
 
-        let etag = response
-            .headers()
-            .get(super::etag::ETAG_HEADER)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned);
         let body = response.text().await?;
+        let verification = if (200..300).contains(&status) {
+            self.verify_response(
+                options,
+                path,
+                nonce.as_deref(),
+                post_params_hash_value,
+                signature.as_deref(),
+                request_time.as_deref(),
+                etag.as_deref(),
+                body.as_bytes(),
+            )?
+        } else {
+            VerificationResult::NotRequested
+        };
 
-        if use_etag && (200..300).contains(&status) {
+        // FAILED responses are never cached (`shouldStoreBackendResult`).
+        if use_etag && (200..300).contains(&status) && verification != VerificationResult::Failed {
             if let Some(etag) = etag.filter(|e| !e.is_empty()) {
-                self.etags.store(url, &etag, status, &body);
+                self.etags.store(url, &etag, status, &body, verification);
             }
         }
 
-        Ok(Outcome::Resolved { status, body })
+        Ok(Outcome::Resolved {
+            status,
+            body,
+            verification,
+        })
     }
 
-    fn finish<T: DeserializeOwned>(status: u16, body: &str) -> Result<HttpResponse<T>> {
+    /// Mirrors `SigningManager.verifyResponse`: decides
+    /// NotRequested/Verified/Failed and, in Enforced mode, turns failures
+    /// into `SignatureVerificationError`.
+    #[allow(clippy::too_many_arguments)]
+    fn verify_response(
+        &self,
+        options: &RequestOptions,
+        path: &str,
+        nonce_b64: Option<&str>,
+        post_params_hash_value: Option<&str>,
+        signature: Option<&str>,
+        request_time: Option<&str>,
+        etag: Option<&str>,
+        body: &[u8],
+    ) -> Result<VerificationResult> {
+        let Some(verifier) = &self.verifier else {
+            return Ok(VerificationResult::NotRequested);
+        };
+        if !options.verify {
+            return Ok(VerificationResult::NotRequested);
+        }
+
+        let outcome = (|| -> std::result::Result<(), String> {
+            let signature = signature.ok_or("missing X-Signature header")?;
+            let request_time = request_time.ok_or("missing X-RevenueCat-Request-Time header")?;
+            if body.is_empty() && etag.is_none() {
+                return Err("response has neither a body nor an ETag".to_owned());
+            }
+            let url_path = path.split('?').next().unwrap_or(path);
+            verifier.verify(
+                signature,
+                &VerifyParams {
+                    nonce_b64,
+                    url_path,
+                    post_params_hash: post_params_hash_value,
+                    request_time,
+                    etag,
+                    body,
+                },
+            )
+        })();
+
+        match outcome {
+            Ok(()) => Ok(VerificationResult::Verified),
+            Err(reason) => {
+                log::warn!("Trusted Entitlements verification failed for {path}: {reason}");
+                if self.mode == EntitlementVerificationMode::Enforced {
+                    Err(Error::with_underlying(
+                        ErrorCode::SignatureVerificationError,
+                        reason,
+                    ))
+                } else {
+                    Ok(VerificationResult::Failed)
+                }
+            }
+        }
+    }
+
+    fn finish<T: DeserializeOwned>(
+        status: u16,
+        body: &str,
+        verification: VerificationResult,
+    ) -> Result<HttpResponse<T>> {
         if (200..300).contains(&status) {
             let value = if body.is_empty() {
                 serde_json::from_value(Value::Object(Default::default()))?
             } else {
                 serde_json::from_str(body)?
             };
-            return Ok(HttpResponse { value, status });
+            return Ok(HttpResponse {
+                value,
+                status,
+                verification,
+            });
         }
         Err(parse_backend_error(status, body))
     }
@@ -230,9 +457,15 @@ impl HttpClient {
 
 #[derive(Debug)]
 enum Outcome {
-    Resolved { status: u16, body: String },
+    Resolved {
+        status: u16,
+        body: String,
+        verification: VerificationResult,
+    },
     NotModifiedWithoutCache,
-    RateLimited { retry_after: Option<Duration> },
+    RateLimited {
+        retry_after: Option<Duration>,
+    },
 }
 
 /// Backend errors look like `{"code": 7259, "message": "..."}` — `code` may
@@ -288,6 +521,7 @@ fn parse_backend_error(status: u16, body: &str) -> Error {
     if let Some(attribute_errors) = extract_attribute_errors(&parsed) {
         error.underlying = Some(attribute_errors);
     }
+    error.error_body = Some(parsed);
     error
 }
 
@@ -333,6 +567,18 @@ mod tests {
         assert_eq!(
             error.underlying.as_deref(),
             Some("$email: Email is not valid.")
+        );
+    }
+
+    #[test]
+    fn keeps_error_body_for_typed_flows() {
+        let body = r#"{"code": 7853, "message": "The link has expired.",
+            "purchase_redemption_error_info": {"obfuscated_email": "g***@e.com"}}"#;
+        let error = parse_backend_error(403, body);
+        assert_eq!(
+            error.error_body.as_ref().unwrap()["purchase_redemption_error_info"]
+                ["obfuscated_email"],
+            "g***@e.com"
         );
     }
 

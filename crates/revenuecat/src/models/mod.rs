@@ -1,5 +1,6 @@
 mod customer_info;
 mod offerings;
+mod redemption;
 mod store_product;
 mod transaction;
 mod virtual_currencies;
@@ -12,6 +13,7 @@ pub use offerings::{
     Offering, OfferingResponse, Offerings, OfferingsResponse, Package, PackageResponse,
     PackageType, PlacementsResponse, PresentedOfferingContext, TargetingResponse,
 };
+pub use redemption::{RedeemResult, WebPurchaseRedemption};
 pub use store_product::{
     Price, PricingPhase, ProductType, ProductsResponse, StoreProduct, WebBillingProduct,
 };

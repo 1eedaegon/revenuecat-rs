@@ -8,10 +8,10 @@
 //! `proxy_url`).
 
 use revenuecat::{
-    CacheFetchPolicy, Configuration, CustomerInfo, Error, ErrorCode, Offerings, PurchaseResult,
-    Purchases,
+    CacheFetchPolicy, Configuration, CustomerInfo, EntitlementVerificationMode, Error, ErrorCode,
+    Offerings, PurchaseResult, Purchases,
 };
-use revenuecat_mock::{MockRevenueCat, MockServerHandle};
+use revenuecat_mock::{test_root_public_key_b64, MockRevenueCat, MockServerHandle};
 use tauri::State;
 
 pub struct DemoState {
@@ -32,6 +32,9 @@ pub async fn init_demo() -> Result<DemoState, Error> {
         Configuration::builder("test_tauri_demo_key")
             .proxy_url(&mock.url)
             .platform_flavor("tauri", tauri::VERSION)
+            // The mock signs with its own test chain; verify every response.
+            .entitlement_verification_mode(EntitlementVerificationMode::Informational)
+            .verification_root_key(test_root_public_key_b64())
             .build()?,
     )?;
 
