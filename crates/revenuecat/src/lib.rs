@@ -48,13 +48,16 @@ mod http;
 mod identity;
 mod models;
 mod purchases;
+mod security;
 
 pub use backend::ReceiptRequest;
 pub use billing::{SimulatedStoreBilling, StoreBilling};
 pub use configuration::{
-    ApiKeyKind, Configuration, ConfigurationBuilder, Platform, DEFAULT_API_BASE,
+    ApiKeyKind, Configuration, ConfigurationBuilder, EntitlementVerificationMode, Platform,
+    DEFAULT_API_BASE,
 };
 pub use error::{Error, ErrorCode, Result};
 pub use identity::{generate_anonymous_id, is_anonymous_id, ANONYMOUS_ID_PREFIX};
 pub use models::*;
 pub use purchases::{CacheFetchPolicy, PurchaseResult, Purchases};
+pub use security::ROOT_PUBLIC_KEY_B64;

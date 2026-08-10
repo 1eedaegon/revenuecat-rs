@@ -15,7 +15,8 @@ use crate::error::{Error, ErrorCode, Result};
 use crate::http::HttpClient;
 use crate::identity::IdentityManager;
 use crate::models::{
-    CustomerInfo, Offerings, Package, StoreProduct, StoreTransaction, VirtualCurrencies,
+    CustomerInfo, Offerings, Package, RedeemResult, StoreProduct, StoreTransaction,
+    VirtualCurrencies, WebPurchaseRedemption,
 };
 
 /// Mirrors `CacheFetchPolicy` from purchases-android.
@@ -344,6 +345,33 @@ impl Purchases {
             Some(name.into()),
         )]))
         .await
+    }
+
+    // -- Web purchase redemption -------------------------------------------
+
+    /// Parses a RevenueCat redemption deep link
+    /// (`<scheme>://redeem_web_purchase?redemption_token=...`), mirroring
+    /// `Purchases.parseAsWebPurchaseRedemption`.
+    pub fn parse_web_purchase_redemption(url: &str) -> Option<WebPurchaseRedemption> {
+        WebPurchaseRedemption::parse_url(url)
+    }
+
+    /// Redeems a web purchase for the current user. On success the returned
+    /// CustomerInfo is cached and listeners are notified, matching
+    /// `WebPurchaseRedemptionHelper` in the official SDKs.
+    pub async fn redeem_web_purchase(
+        &self,
+        redemption: &WebPurchaseRedemption,
+    ) -> Result<RedeemResult> {
+        let result = self
+            .inner
+            .backend
+            .post_redeem_web_purchase(&self.app_user_id(), &redemption.redemption_token)
+            .await?;
+        if let RedeemResult::Success { customer_info } = &result {
+            self.store_and_notify(customer_info);
+        }
+        Ok(result)
     }
 
     // -- Virtual currencies ------------------------------------------------
