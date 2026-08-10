@@ -4,6 +4,11 @@
 [advisories]
 version = 2
 yanked = "deny"
+# Only flag unmaintained crates we depend on DIRECTLY. Tauri's Linux GTK3
+# stack transitively pulls the archived gtk-rs bindings (RUSTSEC-2024-041x
+# family) which upstream Tauri cannot drop yet; real vulnerabilities still
+# fail the check regardless of depth.
+unmaintained = "workspace"
 
 [licenses]
 version = 2
@@ -24,6 +29,9 @@ allow = [
 [bans]
 multiple-versions = "allow"
 wildcards = "deny"
+# Internal `{ path = ... }` deps of unpublished crates (demo, mock wiring)
+# have no version requirement by design.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
