@@ -69,6 +69,34 @@ Point the SDK anywhere (staging, the bundled mock) with
 `.proxy_url("http://127.0.0.1:PORT")` — same semantics as `Purchases.proxyURL`
 in the official SDKs.
 
+## How to: verify responses (Trusted Entitlements)
+
+Response-signature verification (Ed25519) is off by default, mirroring the
+official SDKs:
+
+```rust
+use revenuecat::EntitlementVerificationMode;
+
+let config = Configuration::builder("test_KEY")
+    // Informational: verify + report, never block. Enforced: failures
+    // become SignatureVerificationError.
+    .entitlement_verification_mode(EntitlementVerificationMode::Informational)
+    .build()?;
+// ...
+let info = purchases.get_customer_info(Default::default()).await?;
+assert!(info.entitlements.verification.is_verified());
+```
+
+Verified endpoints send `X-Nonce` (12 random bytes) and signed POSTs add
+`X-Post-Params-Hash`; responses are checked against RevenueCat's root key —
+root signature over the intermediate key (with expiry), then the payload
+signature over `salt‖api_key‖nonce‖path‖params_hash‖request_time‖etag‖body`.
+Against `revenuecat-mock` (which signs with its own test chain) pass
+`.verification_root_key(revenuecat_mock::test_root_public_key_b64())`.
+Redeem web-purchase deep links with
+`Purchases::parse_web_purchase_redemption(url)` +
+`purchases.redeem_web_purchase(&r)`.
+
 ## How to: run the tests
 
 ```sh
@@ -235,24 +263,9 @@ endpoints the official clients use is spoken.
 | `POST /v1/subscribers/identify` | ✅ created = HTTP 201 |
 | `POST /v1/subscribers/{id}/attributes` | ✅ incl. `attribute_errors` parsing |
 | `GET /v1/subscribers/{id}/virtual_currencies` | ✅ with cache + invalidation |
-| Trusted Entitlements (`X-Signature`) | ❌ not implemented (optional; verification mode `informational` is a no-op server-side) |
-| Paywalls / customer center UI, diagnostics/events, web purchase redemption | ❌ out of scope for v0.1 |
-
-## How to: release to crates.io
-
-CI (`.github/workflows/ci.yml`) runs fmt + clippy + tests + `cargo deny` on
-every push. Publishing is tag-driven (`.github/workflows/release.yml`):
-
-```sh
-# once: add your crates.io token as a repo secret
-gh secret set CARGO_REGISTRY_TOKEN
-
-# release
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-The workflow verifies the tag matches `Cargo.toml`, re-runs the test suite,
-and `cargo publish -p revenuecat-rs`.
+| Trusted Entitlements (`X-Signature`, Ed25519) | ✅ full chain: root → intermediate (expiry-checked) → payload; nonce + post-params-hash on signed requests; Disabled/Informational/Enforced modes |
+| `POST /v1/subscribers/redeem_purchase` | ✅ typed results incl. `Expired { obfuscated_email }`; deep-link parser |
+| Paywalls / customer center UI, diagnostics/events | ❌ out of scope |
 
 ## License
 
