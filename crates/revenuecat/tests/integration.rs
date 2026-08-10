@@ -336,6 +336,37 @@ async fn restore_without_owned_transactions_refreshes_customer_info() {
 }
 
 #[tokio::test]
+async fn virtual_currencies_fetch_and_cache() {
+    let server = spawn_mock().await;
+    let purchases = configure(&server, Some("gon"));
+
+    // First call hits the network; the fresh cache then serves the second.
+    let currencies = purchases.get_virtual_currencies().await.unwrap();
+    assert_eq!(currencies.balance("GLD"), 100);
+    assert_eq!(currencies.get("GLD").unwrap().name, "Gold");
+
+    purchases.get_virtual_currencies().await.unwrap();
+    assert_eq!(
+        server
+            .received_on("/v1/subscribers/gon/virtual_currencies")
+            .len(),
+        1,
+        "second read must come from the cache"
+    );
+
+    // Invalidation forces a refetch, mirroring invalidateVirtualCurrenciesCache.
+    purchases.invalidate_virtual_currencies_cache();
+    assert!(purchases.cached_virtual_currencies().is_none());
+    purchases.get_virtual_currencies().await.unwrap();
+    assert_eq!(
+        server
+            .received_on("/v1/subscribers/gon/virtual_currencies")
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
 async fn missing_store_billing_for_non_test_key_is_a_configuration_error() {
     let err =
         Purchases::configure(Configuration::builder("goog_real_key").build().unwrap()).unwrap_err();

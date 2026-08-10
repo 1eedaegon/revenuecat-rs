@@ -234,8 +234,9 @@ endpoints the official clients use is spoken.
 | `GET /rcbilling/v1/subscribers/{id}/products` | ✅ (Test Store products) |
 | `POST /v1/subscribers/identify` | ✅ created = HTTP 201 |
 | `POST /v1/subscribers/{id}/attributes` | ✅ incl. `attribute_errors` parsing |
+| `GET /v1/subscribers/{id}/virtual_currencies` | ✅ with cache + invalidation |
 | Trusted Entitlements (`X-Signature`) | ❌ not implemented (optional; verification mode `informational` is a no-op server-side) |
-| Virtual currencies, paywalls, diagnostics/events | ❌ out of scope for v0.1 |
+| Paywalls / customer center UI, diagnostics/events, web purchase redemption | ❌ out of scope for v0.1 |
 
 ## How to: release to crates.io
 

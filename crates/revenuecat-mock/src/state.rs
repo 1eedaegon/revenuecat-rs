@@ -63,6 +63,13 @@ pub struct MockPackage {
 }
 
 #[derive(Debug, Clone)]
+pub struct MockVirtualCurrency {
+    pub code: String,
+    pub name: String,
+    pub balance: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct MockOffering {
     pub identifier: String,
     pub description: String,
@@ -106,6 +113,7 @@ pub struct ServerState {
     pub products: Vec<MockProduct>,
     pub offerings: Vec<MockOffering>,
     pub current_offering_id: Option<String>,
+    pub virtual_currencies: Vec<MockVirtualCurrency>,
     pub(crate) subscribers: Mutex<HashMap<String, Subscriber>>,
     /// fetch_token -> app_user_id, to reject token reuse across users.
     pub(crate) used_tokens: Mutex<HashMap<String, String>>,
@@ -117,11 +125,13 @@ impl ServerState {
         products: Vec<MockProduct>,
         offerings: Vec<MockOffering>,
         current_offering_id: Option<String>,
+        virtual_currencies: Vec<MockVirtualCurrency>,
     ) -> Self {
         Self {
             products,
             offerings,
             current_offering_id,
+            virtual_currencies,
             subscribers: Mutex::new(HashMap::new()),
             used_tokens: Mutex::new(HashMap::new()),
             requests: Mutex::new(Vec::new()),

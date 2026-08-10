@@ -36,6 +36,10 @@ pub fn router(state: Arc<ServerState>) -> Router {
         .route("/v1/subscribers/{id}", get(get_subscriber))
         .route("/v1/subscribers/{id}/offerings", get(get_offerings))
         .route("/v1/subscribers/{id}/attributes", post(post_attributes))
+        .route(
+            "/v1/subscribers/{id}/virtual_currencies",
+            get(get_virtual_currencies),
+        )
         .route("/v1/subscribers/identify", post(post_identify))
         .route("/v1/receipts", post(post_receipts))
         .route("/rcbilling/v1/subscribers/{id}/products", get(get_products))
@@ -189,6 +193,25 @@ async fn get_products(
         Json(json!({"product_details": product_details})),
     )
         .into_response()
+}
+
+async fn get_virtual_currencies(
+    State(state): State<Arc<ServerState>>,
+    Path(app_user_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    ensure_subscriber(&state, &app_user_id);
+    let currencies: Map<String, Value> = state
+        .virtual_currencies
+        .iter()
+        .map(|c| {
+            (
+                c.code.clone(),
+                json!({"balance": c.balance, "code": c.code, "name": c.name}),
+            )
+        })
+        .collect();
+    etag_response(&headers, json!({"virtual_currencies": currencies}))
 }
 
 async fn post_receipts(State(state): State<Arc<ServerState>>, Json(body): Json<Value>) -> Response {

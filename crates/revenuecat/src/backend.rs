@@ -9,7 +9,9 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::{encode_path_segment, HttpClient};
-use crate::models::{CustomerInfo, OfferingsResponse, ProductsResponse, TargetingResponse};
+use crate::models::{
+    CustomerInfo, OfferingsResponse, ProductsResponse, TargetingResponse, VirtualCurrencies,
+};
 
 /// Body for `POST /v1/receipts`. Field names match purchases-android's
 /// `Backend.postReceiptData`; the endpoint rejects unknown top-level keys, so
@@ -177,6 +179,15 @@ impl Backend {
         );
         let _: Value = self.http.post(&path, json!({"attributes": body})).await?;
         Ok(())
+    }
+
+    /// `GET /v1/subscribers/{id}/virtual_currencies`.
+    pub async fn get_virtual_currencies(&self, app_user_id: &str) -> Result<VirtualCurrencies> {
+        let path = format!(
+            "/v1/subscribers/{}/virtual_currencies",
+            encode_path_segment(app_user_id)
+        );
+        self.http.get(&path).await
     }
 }
 

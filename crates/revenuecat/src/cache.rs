@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::models::{CustomerInfo, Offerings};
+use crate::models::{CustomerInfo, Offerings, VirtualCurrencies};
 
 #[derive(Debug, Clone)]
 struct CachedEntry<T> {
@@ -19,6 +19,7 @@ pub(crate) struct DeviceCache {
     ttl: Duration,
     customer_info: Mutex<HashMap<String, CachedEntry<CustomerInfo>>>,
     offerings: Mutex<Option<CachedEntry<Offerings>>>,
+    virtual_currencies: Mutex<Option<CachedEntry<VirtualCurrencies>>>,
 }
 
 impl DeviceCache {
@@ -27,6 +28,7 @@ impl DeviceCache {
             ttl,
             customer_info: Mutex::new(HashMap::new()),
             offerings: Mutex::new(None),
+            virtual_currencies: Mutex::new(None),
         }
     }
 
@@ -72,6 +74,24 @@ impl DeviceCache {
         });
     }
 
+    pub fn cached_virtual_currencies(&self) -> Option<(VirtualCurrencies, bool)> {
+        let guard = self.virtual_currencies.lock().expect("cache lock poisoned");
+        guard
+            .as_ref()
+            .map(|entry| (entry.value.clone(), entry.stored_at.elapsed() > self.ttl))
+    }
+
+    pub fn store_virtual_currencies(&self, currencies: &VirtualCurrencies) {
+        *self.virtual_currencies.lock().expect("cache lock poisoned") = Some(CachedEntry {
+            value: currencies.clone(),
+            stored_at: Instant::now(),
+        });
+    }
+
+    pub fn invalidate_virtual_currencies(&self) {
+        *self.virtual_currencies.lock().expect("cache lock poisoned") = None;
+    }
+
     /// Drops everything — used on identity changes (logIn/logOut).
     pub fn clear(&self) {
         self.customer_info
@@ -79,5 +99,6 @@ impl DeviceCache {
             .expect("cache lock poisoned")
             .clear();
         *self.offerings.lock().expect("cache lock poisoned") = None;
+        *self.virtual_currencies.lock().expect("cache lock poisoned") = None;
     }
 }

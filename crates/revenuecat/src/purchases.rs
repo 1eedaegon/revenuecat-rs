@@ -14,7 +14,9 @@ use crate::configuration::{ApiKeyKind, Configuration};
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::HttpClient;
 use crate::identity::IdentityManager;
-use crate::models::{CustomerInfo, Offerings, Package, StoreProduct, StoreTransaction};
+use crate::models::{
+    CustomerInfo, Offerings, Package, StoreProduct, StoreTransaction, VirtualCurrencies,
+};
 
 /// Mirrors `CacheFetchPolicy` from purchases-android.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -342,6 +344,35 @@ impl Purchases {
             Some(name.into()),
         )]))
         .await
+    }
+
+    // -- Virtual currencies ------------------------------------------------
+
+    /// Fetches virtual currency balances, serving a fresh cache when
+    /// available — mirroring `getVirtualCurrencies`.
+    pub async fn get_virtual_currencies(&self) -> Result<VirtualCurrencies> {
+        if let Some((currencies, false)) = self.inner.cache.cached_virtual_currencies() {
+            return Ok(currencies);
+        }
+        let currencies = self
+            .inner
+            .backend
+            .get_virtual_currencies(&self.app_user_id())
+            .await?;
+        self.inner.cache.store_virtual_currencies(&currencies);
+        Ok(currencies)
+    }
+
+    /// Mirrors `cachedVirtualCurrencies`: the cache regardless of staleness.
+    pub fn cached_virtual_currencies(&self) -> Option<VirtualCurrencies> {
+        self.inner
+            .cache
+            .cached_virtual_currencies()
+            .map(|(currencies, _)| currencies)
+    }
+
+    pub fn invalidate_virtual_currencies_cache(&self) {
+        self.inner.cache.invalidate_virtual_currencies();
     }
 
     // -- Internals ---------------------------------------------------------

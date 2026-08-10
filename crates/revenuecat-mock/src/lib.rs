@@ -14,7 +14,10 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-pub use state::{MockOffering, MockPackage, MockProduct, RecordedRequest, ServerState, Subscriber};
+pub use state::{
+    MockOffering, MockPackage, MockProduct, MockVirtualCurrency, RecordedRequest, ServerState,
+    Subscriber,
+};
 
 /// Builder for a mock RevenueCat backend with a product/offering catalog.
 #[derive(Debug, Default)]
@@ -22,6 +25,7 @@ pub struct MockRevenueCat {
     products: Vec<MockProduct>,
     offerings: Vec<MockOffering>,
     current_offering_id: Option<String>,
+    virtual_currencies: Vec<MockVirtualCurrency>,
 }
 
 impl MockRevenueCat {
@@ -75,6 +79,7 @@ impl MockRevenueCat {
                 ],
             })
             .current_offering("default")
+            .virtual_currency("GLD", "Gold", 100)
     }
 
     pub fn product(mut self, product: MockProduct) -> Self {
@@ -92,12 +97,22 @@ impl MockRevenueCat {
         self
     }
 
+    pub fn virtual_currency(mut self, code: &str, name: &str, balance: i64) -> Self {
+        self.virtual_currencies.push(MockVirtualCurrency {
+            code: code.into(),
+            name: name.into(),
+            balance,
+        });
+        self
+    }
+
     /// Binds to an ephemeral localhost port and starts serving.
     pub async fn spawn(self) -> std::io::Result<MockServerHandle> {
         let state = Arc::new(ServerState::new(
             self.products,
             self.offerings,
             self.current_offering_id,
+            self.virtual_currencies,
         ));
         let router = server::router(Arc::clone(&state));
         let listener = TcpListener::bind("127.0.0.1:0").await?;

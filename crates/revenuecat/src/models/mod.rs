@@ -2,6 +2,7 @@ mod customer_info;
 mod offerings;
 mod store_product;
 mod transaction;
+mod virtual_currencies;
 
 pub use customer_info::{
     CustomerInfo, EntitlementInfo, EntitlementInfos, NonSubscriptionTransaction, OwnershipType,
@@ -15,3 +16,4 @@ pub use store_product::{
     Price, PricingPhase, ProductType, ProductsResponse, StoreProduct, WebBillingProduct,
 };
 pub use transaction::StoreTransaction;
+pub use virtual_currencies::{VirtualCurrencies, VirtualCurrency};
