@@ -21,7 +21,8 @@ backend.*
 | Crate | What it is |
 |---|---|
 | `crates/revenuecat` | The SDK: models, HTTP client, backend ops, `Purchases` facade, `StoreBilling` trait + simulated Test Store |
-| `crates/revenuecat-mock` | In-process mock of the RevenueCat API (axum) used by tests and the demo |
+| `crates/revenuecat-mock` | In-process mock of the RevenueCat API (axum) used by tests and the demo — signs responses with a test Ed25519 chain |
+| `crates/tauri-plugin-revenuecat` | Tauri 2 mobile plugin: StoreKit 2 (Swift) / Play Billing (Kotlin) shims behind the `StoreBilling` trait — code-complete, device E2E pending |
 | `demo/tauri-app` | Tauri 2 desktop demo driving the SDK through IPC commands |
 
 ## How to: use the SDK
@@ -100,7 +101,7 @@ Redeem web-purchase deep links with
 ## How to: run the tests
 
 ```sh
-cargo test --workspace          # unit + integration + Tauri IPC tests (51 tests)
+cargo test --workspace          # unit + integration + Tauri IPC tests
 cargo clippy --workspace --all-targets   # lint gate (unwrap is denied in lib code)
 cargo fmt --all --check
 cargo deny check                # dependency advisories / licenses (cargo install cargo-deny)
@@ -227,13 +228,15 @@ impl revenuecat::StoreBilling for MyStoreBridge {
 
 Platform notes (from surveying how RevenueCat's own hybrid SDKs work):
 
-- **iOS / Android (Tauri mobile)**: write a Tauri mobile plugin — Swift for
-  StoreKit 2, Kotlin for Play Billing — and have `StoreBilling` call it via
-  `run_mobile_plugin`. Play Billing has no C API and StoreKit 2 is
-  Swift-only, so a thin native layer is unavoidable; this mirrors how
-  RevenueCat's Flutter/RN/KMP SDKs all wrap the native ones. Remember: after
-  `POST /v1/receipts` succeeds, Google purchases must still be
-  **acknowledged within 3 days** (`finish_transaction`), or they auto-refund.
+- **iOS / Android (Tauri mobile)**: use the in-repo
+  `crates/tauri-plugin-revenuecat` — Swift (StoreKit 2) and Kotlin
+  (Play Billing v8) shims behind `StoreBilling`, registered with
+  `.plugin(tauri_plugin_revenuecat::init())` and wired via
+  `tauri_plugin_revenuecat::store_billing(app.handle())`. The native code is
+  modeled on the official SDKs' wrappers but still needs store accounts and
+  devices for end-to-end verification. Remember: after `POST /v1/receipts`
+  succeeds, Google purchases must still be **acknowledged within 3 days**
+  (`finish_transaction`), or they auto-refund.
 - **macOS**: StoreKit works in Mac App Store builds of Tauri apps
   (sandbox + signing required); direct-distribution builds should use web
   checkout instead.
@@ -265,7 +268,9 @@ endpoints the official clients use is spoken.
 | `GET /v1/subscribers/{id}/virtual_currencies` | ✅ with cache + invalidation |
 | Trusted Entitlements (`X-Signature`, Ed25519) | ✅ full chain: root → intermediate (expiry-checked) → payload; nonce + post-params-hash on signed requests; Disabled/Informational/Enforced modes |
 | `POST /v1/subscribers/redeem_purchase` | ✅ typed results incl. `Expired { obfuscated_email }`; deep-link parser |
-| Paywalls / customer center UI, diagnostics/events | ❌ out of scope |
+| `POST /v1/diagnostics` (dedicated host) | ✅ opt-in; Android entry shape, 200/batch, 3-retry-then-clear semantics |
+| Native stores (StoreKit 2 / Play Billing) | 🔶 `tauri-plugin-revenuecat` shims are code-complete; device E2E pending |
+| Paywalls / customer center UI | ❌ out of scope (ships separately in official SDKs too) |
 
 ## License
 

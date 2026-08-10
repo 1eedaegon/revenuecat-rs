@@ -178,7 +178,7 @@ impl SignatureVerifier {
 /// 12 random bytes, base64-encoded — the X-Nonce request header value.
 pub fn generate_nonce() -> String {
     let mut bytes = [0u8; NONCE_LEN];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+    rand::fill(&mut bytes);
     BASE64.encode(bytes)
 }
 

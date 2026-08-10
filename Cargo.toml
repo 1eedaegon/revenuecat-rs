@@ -3,11 +3,12 @@ resolver = "2"
 members = [
     "crates/revenuecat",
     "crates/revenuecat-mock",
+    "crates/tauri-plugin-revenuecat",
     "demo/tauri-app/src-tauri",
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.85"
@@ -30,11 +31,11 @@ revenuecat-mock = { path = "crates/revenuecat-mock" }
 
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "fast"] }
-rand = "0.8"
-sha2 = "0.10"
+rand = "0.10"
+sha2 = "0.11"
 log = "0.4"
 percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
