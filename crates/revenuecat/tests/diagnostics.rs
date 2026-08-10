@@ -102,3 +102,38 @@ async fn diagnostics_disabled_records_and_posts_nothing() {
 
     assert!(server.received_on("/v1/diagnostics").is_empty());
 }
+
+#[tokio::test]
+async fn a_full_batch_auto_flushes_without_an_explicit_call() {
+    // Arrange
+    let server = MockRevenueCat::with_default_catalog()
+        .spawn()
+        .await
+        .unwrap();
+    let purchases = Purchases::configure(
+        Configuration::builder("test_diag_key")
+            .proxy_url(&server.url)
+            .diagnostics_enabled(true)
+            .diagnostics_url(&server.url)
+            .app_user_id("auto")
+            .build()
+            .unwrap(),
+    )
+    .unwrap();
+
+    // Act: 200 tracked requests reach the batch threshold; the spawned
+    // background flush stands in for Android's 200 KB file trigger.
+    for _ in 0..200 {
+        purchases
+            .get_customer_info(CacheFetchPolicy::FetchCurrent)
+            .await
+            .unwrap();
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // Assert: entries were posted without flush_diagnostics().
+    assert!(
+        !server.received_on("/v1/diagnostics").is_empty(),
+        "auto-flush must post once a full batch accumulates"
+    );
+}

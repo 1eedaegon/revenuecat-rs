@@ -207,7 +207,13 @@ async fn get_subscriber(
     headers: HeaderMap,
 ) -> Response {
     ensure_subscriber(&state, &app_user_id);
-    etag_response(&headers, subscriber_envelope(&state, &app_user_id))
+    let path = format!("/v1/subscribers/{app_user_id}");
+    etag_response_for(
+        &state,
+        &path,
+        &headers,
+        subscriber_envelope(&state, &app_user_id),
+    )
 }
 
 async fn get_offerings(
@@ -235,7 +241,8 @@ async fn get_offerings(
         "current_offering_id": state.current_offering_id,
         "offerings": offerings,
     });
-    etag_response(&headers, body)
+    let path = format!("/v1/subscribers/{app_user_id}/offerings");
+    etag_response_for(&state, &path, &headers, body)
 }
 
 async fn get_products(
@@ -312,7 +319,13 @@ async fn get_virtual_currencies(
             )
         })
         .collect();
-    etag_response(&headers, json!({"virtual_currencies": currencies}))
+    let path = format!("/v1/subscribers/{app_user_id}/virtual_currencies");
+    etag_response_for(
+        &state,
+        &path,
+        &headers,
+        json!({"virtual_currencies": currencies}),
+    )
 }
 
 async fn post_receipts(
@@ -320,6 +333,22 @@ async fn post_receipts(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
+    if state
+        .receipt_rate_limits
+        .fetch_update(
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+            |n| n.checked_sub(1),
+        )
+        .is_ok()
+    {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [("Retry-After", "0")],
+            Json(json!({"code": 7101, "message": "Rate limited."})),
+        )
+            .into_response();
+    }
     let fetch_token = body["fetch_token"].as_str().unwrap_or_default().to_owned();
     let app_user_id = body["app_user_id"].as_str().unwrap_or_default().to_owned();
     if let Some(error) = validate_post_params_hash(
@@ -771,17 +800,29 @@ fn backend_error(status: StatusCode, code: i64, message: &str) -> Response {
 
 /// RevenueCat's custom ETag protocol: compare the request's
 /// `X-RevenueCat-ETag` with the hash of the fresh body; matching -> 304.
-fn etag_response(headers: &HeaderMap, body: Value) -> Response {
+/// A `force_304_next` mark answers 304 regardless, exercising the client's
+/// 304-without-cache retry.
+fn etag_response_for(
+    state: &ServerState,
+    path: &str,
+    headers: &HeaderMap,
+    body: Value,
+) -> Response {
     let text = body.to_string();
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
     let etag = format!("{:x}", hasher.finish());
 
+    let forced = state
+        .force_not_modified
+        .lock()
+        .map(|mut set| set.remove(path))
+        .unwrap_or(false);
     let request_etag = headers
         .get(ETAG_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
-    if !request_etag.is_empty() && request_etag == etag {
+    if forced || (!request_etag.is_empty() && request_etag == etag) {
         return (StatusCode::NOT_MODIFIED, [(ETAG_HEADER, etag)]).into_response();
     }
     (StatusCode::OK, [(ETAG_HEADER, etag)], Json(body)).into_response()

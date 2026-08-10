@@ -1,6 +1,7 @@
 //! Catalog and per-subscriber state for the mock backend.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Duration, Utc};
@@ -128,6 +129,10 @@ pub struct ServerState {
     /// redemption token -> app_user_id that redeemed it.
     pub(crate) redeemed_by: Mutex<HashMap<String, String>>,
     pub(crate) diagnostics: Mutex<Vec<serde_json::Value>>,
+    /// Number of upcoming POST /v1/receipts to answer with 429.
+    pub(crate) receipt_rate_limits: AtomicU32,
+    /// Paths whose next ETag-capable GET answers 304 unconditionally.
+    pub(crate) force_not_modified: Mutex<HashSet<String>>,
     pub(crate) subscribers: Mutex<HashMap<String, Subscriber>>,
     /// fetch_token -> app_user_id, to reject token reuse across users.
     pub(crate) used_tokens: Mutex<HashMap<String, String>>,
@@ -152,6 +157,8 @@ impl ServerState {
             redemptions: Mutex::new(redemptions),
             redeemed_by: Mutex::new(HashMap::new()),
             diagnostics: Mutex::new(Vec::new()),
+            receipt_rate_limits: AtomicU32::new(0),
+            force_not_modified: Mutex::new(HashSet::new()),
             subscribers: Mutex::new(HashMap::new()),
             used_tokens: Mutex::new(HashMap::new()),
             requests: Mutex::new(Vec::new()),

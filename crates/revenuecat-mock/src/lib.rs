@@ -175,6 +175,22 @@ pub struct MockServerHandle {
 }
 
 impl MockServerHandle {
+    /// Answers the next `count` receipt posts with HTTP 429 (Retry-After: 0)
+    /// to exercise the SDK's retry backoff.
+    pub fn rate_limit_receipts(&self, count: u32) {
+        self.state
+            .receipt_rate_limits
+            .store(count, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Forces the next ETag-capable GET on `path` to answer 304 even without
+    /// a matching request ETag — the "304 without local cache" edge.
+    pub fn force_304_next(&self, path: &str) {
+        if let Ok(mut set) = self.state.force_not_modified.lock() {
+            set.insert(path.to_owned());
+        }
+    }
+
     /// Requests received so far (method, path, headers subset, JSON body) —
     /// for asserting exact wire behavior in tests, in the spirit of
     /// purchases-js's MSW request spies.

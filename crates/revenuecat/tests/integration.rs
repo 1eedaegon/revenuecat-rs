@@ -372,3 +372,53 @@ async fn missing_store_billing_for_non_test_key_is_a_configuration_error() {
         Purchases::configure(Configuration::builder("goog_real_key").build().unwrap()).unwrap_err();
     assert_eq!(err.code, ErrorCode::ConfigurationError);
 }
+
+#[tokio::test]
+async fn receipt_posts_retry_on_429_until_success() {
+    // Arrange: the next two receipt posts are rate limited.
+    let server = spawn_mock().await;
+    server.rate_limit_receipts(2);
+    let purchases = configure(&server, Some("retry-user"));
+
+    // Act: the purchase must survive two 429s via the retry backoff.
+    let offerings = purchases.get_offerings().await.unwrap();
+    let monthly = offerings.current().unwrap().monthly().unwrap();
+    let result = purchases.purchase_package(monthly).await.unwrap();
+
+    // Assert: 3 attempts total, purchase granted.
+    assert!(result.customer_info.entitlements.is_active("pro"));
+    assert_eq!(server.received_on("/v1/receipts").len(), 3);
+}
+
+#[tokio::test]
+async fn a_third_429_exhausts_the_retry_budget() {
+    // Arrange: more 429s than the 3-attempt schedule allows.
+    let server = spawn_mock().await;
+    server.rate_limit_receipts(3);
+    let purchases = configure(&server, Some("retry-user"));
+
+    let offerings = purchases.get_offerings().await.unwrap();
+    let monthly = offerings.current().unwrap().monthly().unwrap();
+    let error = purchases.purchase_package(monthly).await.unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::NetworkError);
+    assert_eq!(server.received_on("/v1/receipts").len(), 3);
+}
+
+#[tokio::test]
+async fn a_304_without_local_cache_is_retried_once_with_empty_etag() {
+    // Arrange: the server incorrectly 304s a client that has no cache.
+    let server = spawn_mock().await;
+    let purchases = configure(&server, Some("etag-miss"));
+    server.force_304_next("/v1/subscribers/etag-miss/offerings");
+
+    // Act: the client must recover by retrying with a cache-busting
+    // empty ETag, mirroring ETagManager's single retry.
+    let offerings = purchases.get_offerings().await.unwrap();
+
+    // Assert
+    assert!(offerings.current().is_some());
+    let requests = server.received_on("/v1/subscribers/etag-miss/offerings");
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].headers["x-revenuecat-etag"], "");
+}
