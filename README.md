@@ -256,7 +256,7 @@ and `cargo publish -p revenuecat-rs`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Not affiliated with or endorsed by RevenueCat.
+[MIT](LICENSE).
 
 [purchases-ios]: https://github.com/RevenueCat/purchases-ios
 [purchases-android]: https://github.com/RevenueCat/purchases-android
