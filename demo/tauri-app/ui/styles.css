@@ -50,7 +50,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  /* Keep the header clear of the status bar / notch. */
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--rule);
 }
 
@@ -245,7 +246,8 @@ button:active { transform: translateY(1px); }
 
 .wire {
   border-top: 1px solid var(--rule);
-  padding: var(--space-2) var(--space-4) var(--space-3);
+  /* Keep the last log line clear of the home indicator / nav bar. */
+  padding: var(--space-2) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: oklch(20% 0.015 60);
   color: oklch(88% 0.01 85);
 }
