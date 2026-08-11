@@ -1,0 +1,7 @@
+
+# iOS build outputs and local Xcode state
+demo/tauri-app/src-tauri/gen/apple/build/
+demo/tauri-app/src-tauri/gen/apple/DerivedData/
+demo/tauri-app/src-tauri/gen/apple/Pods/
+demo/tauri-app/src-tauri/gen/apple/*.xcodeproj/xcuserdata/
+demo/tauri-app/src-tauri/gen/apple/*.xcodeproj/project.xcworkspace/xcuserdata/
