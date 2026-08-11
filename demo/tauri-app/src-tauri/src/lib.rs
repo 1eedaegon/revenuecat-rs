@@ -128,19 +128,12 @@ async fn build_session<R: Runtime>(
         .entitlement_verification_mode(EntitlementVerificationMode::Informational);
 
     let kind = ApiKeyKind::from_api_key(api_key.as_deref().unwrap_or_default());
-    let store = match kind {
+    let (builder, store) = match kind {
         // Real backend + built-in simulated Test Store: no native store.
-        ApiKeyKind::TestStore => "test store".to_owned(),
-        // Real store keys route purchases through the platform store shim.
-        _ => {
-            let billing = tauri_plugin_revenuecat::store_billing(app)?;
-            builder = builder.store_billing(billing);
-            if cfg!(target_os = "android") {
-                "play store".to_owned()
-            } else {
-                "app store".to_owned()
-            }
-        }
+        ApiKeyKind::TestStore => (builder, "test store".to_owned()),
+        // Real store keys route purchases through the platform store shim,
+        // available only in native-store builds.
+        _ => configure_native_store(app, builder)?,
     };
 
     Ok(Session {
@@ -149,6 +142,35 @@ async fn build_session<R: Runtime>(
         store,
         _mock: None,
     })
+}
+
+/// Attaches the native store (StoreKit 2 / Play Billing) in `native-store`
+/// builds; otherwise reports that this demo build cannot use real-store keys.
+#[cfg(feature = "native-store")]
+fn configure_native_store<R: Runtime>(
+    app: &AppHandle<R>,
+    builder: revenuecat::ConfigurationBuilder,
+) -> Result<(revenuecat::ConfigurationBuilder, String), Error> {
+    let billing = tauri_plugin_revenuecat::store_billing(app)?;
+    let store = if cfg!(target_os = "android") {
+        "play store"
+    } else {
+        "app store"
+    };
+    Ok((builder.store_billing(billing), store.to_owned()))
+}
+
+#[cfg(not(feature = "native-store"))]
+fn configure_native_store<R: Runtime>(
+    _app: &AppHandle<R>,
+    _builder: revenuecat::ConfigurationBuilder,
+) -> Result<(revenuecat::ConfigurationBuilder, String), Error> {
+    Err(Error::new(
+        ErrorCode::ConfigurationError,
+        "This demo build has no native store. Use a test_ key (real backend, \
+         simulated Test Store) or leave the key empty for the embedded mock. \
+         Rebuild with --features native-store for StoreKit / Play Billing.",
+    ))
 }
 
 // -- Commands ---------------------------------------------------------------
@@ -243,8 +265,10 @@ pub fn handlers<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send +
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_revenuecat::init())
+    let builder = tauri::Builder::default();
+    #[cfg(feature = "native-store")]
+    let builder = builder.plugin(tauri_plugin_revenuecat::init());
+    builder
         .setup(|app| {
             app.manage(DemoState::default());
             Ok(())
