@@ -1,5 +1,10 @@
 name: CI
 
+# Runs on the repo's self-hosted macOS ARM64 runner (free — GitHub-hosted
+# minutes are exhausted for this private repo). The runner has rustup,
+# sccache (local disk cache), cargo-deny, and the Android NDK preinstalled;
+# its persistent workspace makes cache actions unnecessary.
+
 on:
   push:
     branches: [main]
@@ -7,23 +12,19 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: sccache
 
 jobs:
   lint-and-test:
-    name: Lint + test (SDK crates, Linux)
-    runs-on: ubuntu-latest
-    # Compiler-level build cache; job-scoped so the containerized
-    # cargo-deny action does not inherit a missing sccache binary.
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
+    name: Lint + test (SDK crates)
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: mozilla-actions/sccache-action@v0.0.11
-      - uses: Swatinem/rust-cache@v2
+      - name: Runner PATH
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
@@ -32,67 +33,39 @@ jobs:
         run: cargo test -p revenuecat-rs -p revenuecat-mock
 
   tauri-demo:
-    name: Full workspace incl. Tauri demo (macOS)
-    runs-on: macos-latest
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
+    name: Full workspace incl. Tauri demo
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: mozilla-actions/sccache-action@v0.0.11
-      - uses: Swatinem/rust-cache@v2
+      - name: Runner PATH
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
       - name: clippy full workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: tests (unit + integration + Tauri IPC)
         run: cargo test --workspace
 
-  ios-targets:
-    name: ARM iOS compile check (device + simulator)
-    runs-on: macos-latest
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim
-      - uses: mozilla-actions/sccache-action@v0.0.11
-      - uses: Swatinem/rust-cache@v2
-      - name: SDK core on iOS device target
-        run: cargo check -p revenuecat-rs --target aarch64-apple-ios
-      - name: Tauri plugin (mobile cfg) on iOS device target
-        run: cargo check -p tauri-plugin-revenuecat --target aarch64-apple-ios
-      - name: Tauri plugin on iOS simulator target
-        run: cargo check -p tauri-plugin-revenuecat --target aarch64-apple-ios-sim
-
   android-targets:
     name: ARM Android compile check
-    runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-      - uses: mozilla-actions/sccache-action@v0.0.11
-      - uses: Swatinem/rust-cache@v2
-      - name: Point cargo at the preinstalled NDK toolchain
+      - name: Runner PATH
         run: |
-          TOOLCHAIN="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
+      - name: Point cargo at the local NDK toolchain
+        run: |
+          TOOLCHAIN="$HOME/Library/Android/android-ndk-r27c/toolchains/llvm/prebuilt/darwin-x86_64/bin"
           test -x "$TOOLCHAIN/aarch64-linux-android24-clang"
           {
             echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang"
             echo "CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang++"
             echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar"
             echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang"
-            echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME"
-            echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME"
           } >> "$GITHUB_ENV"
       - name: SDK core on Android target
         run: cargo check -p revenuecat-rs --target aarch64-linux-android
@@ -101,9 +74,13 @@ jobs:
 
   audit:
     name: Dependency audit (cargo-deny)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check advisories licenses bans sources
+      - name: Runner PATH
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
+      - name: cargo-deny
+        run: cargo-deny check advisories licenses bans sources

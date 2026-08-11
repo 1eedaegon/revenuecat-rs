@@ -1,0 +1,29 @@
+# ARM iOS compile checks need an Xcode iOS SDK, which the self-hosted
+# runner does not have. Runs on GitHub-hosted macOS — trigger manually once
+# billing allows hosted runners again (or install Xcode on the runner and
+# fold this back into ci.yml on self-hosted).
+
+name: iOS targets
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ios-targets:
+    name: ARM iOS compile check (device + simulator)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+      - name: SDK core on iOS device target
+        run: cargo check -p revenuecat-rs --target aarch64-apple-ios
+      - name: Tauri plugin (mobile cfg) on iOS device target
+        run: cargo check -p tauri-plugin-revenuecat --target aarch64-apple-ios
+      - name: Tauri plugin on iOS simulator target
+        run: cargo check -p tauri-plugin-revenuecat --target aarch64-apple-ios-sim
