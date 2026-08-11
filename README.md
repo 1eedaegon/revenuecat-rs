@@ -1,6 +1,6 @@
 # revenuecat-rs
 
-Unofficial **RevenueCat SDK for Rust**, protocol-compatible with the official
+**RevenueCat SDK for Rust**, protocol-compatible with the official
 [purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT). Wire
 formats were extracted from their sources and test fixtures.
 
