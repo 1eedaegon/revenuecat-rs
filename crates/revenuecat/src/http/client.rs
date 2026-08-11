@@ -100,10 +100,27 @@ pub struct HttpResponse<T> {
     pub verification: VerificationResult,
 }
 
+/// Builds a rustls config trusting the bundled Mozilla roots. Using
+/// `use_preconfigured_tls` bypasses reqwest's default `rustls-platform-verifier`,
+/// which on Android requires a JNI context the app has no easy way to supply
+/// (an uninitialized verifier makes HTTPS requests hang there).
+fn webpki_tls_config() -> rustls::ClientConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .expect("aws-lc-rs supports the default protocol versions")
+    .with_root_certificates(roots)
+    .with_no_client_auth()
+}
+
 impl HttpClient {
     pub fn new(config: &Configuration, diagnostics: Arc<DiagnosticsTracker>) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(config.http_timeout)
+            .use_preconfigured_tls(webpki_tls_config())
             .build()
             .map_err(|e| Error::with_underlying(ErrorCode::ConfigurationError, e.to_string()))?;
 
