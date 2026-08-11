@@ -22,9 +22,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Runner PATH
         run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          # Later lines take PATH precedence: rustup's cargo must win over
+          # the nix profile's rust-less cargo.
           echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy (deny warnings)
@@ -39,9 +41,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Runner PATH
         run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          # Later lines take PATH precedence: rustup's cargo must win over
+          # the nix profile's rust-less cargo.
           echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: clippy full workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: tests (unit + integration + Tauri IPC)
@@ -54,9 +58,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Runner PATH
         run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          # Later lines take PATH precedence: rustup's cargo must win over
+          # the nix profile's rust-less cargo.
           echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Point cargo at the local NDK toolchain
         run: |
           TOOLCHAIN="$HOME/Library/Android/android-ndk-r27c/toolchains/llvm/prebuilt/darwin-x86_64/bin"
@@ -79,8 +85,10 @@ jobs:
       - uses: actions/checkout@v7
       - name: Runner PATH
         run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          # Later lines take PATH precedence: rustup's cargo must win over
+          # the nix profile's rust-less cargo.
           echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: cargo-deny
         run: cargo-deny check advisories licenses bans sources
