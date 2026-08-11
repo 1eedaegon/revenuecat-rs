@@ -24,8 +24,7 @@ let package = Package(
             dependencies: [
                 .byName(name: "Tauri")
             ],
-            path: ".",
-            sources: ["RevenueCatPlugin.swift"]
+            path: "Sources/RevenueCatPlugin"
         )
     ]
 )

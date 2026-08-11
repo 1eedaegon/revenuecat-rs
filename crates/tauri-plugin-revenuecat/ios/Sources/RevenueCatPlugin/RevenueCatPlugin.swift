@@ -75,6 +75,7 @@ private enum PurchaseFlowError: Error, CustomStringConvertible {
 
 // MARK: - Purchase gate
 
+@available(iOS 15.0, macOS 12.0, *)
 private actor PurchaseGate {
     private var isInFlight = false
 
@@ -95,6 +96,7 @@ private actor PurchaseGate {
 
 // MARK: - Plugin
 
+@available(iOS 15.0, macOS 12.0, *)
 class RevenueCatPlugin: Plugin {
 
     private let purchaseGate = PurchaseGate()
@@ -313,7 +315,23 @@ class RevenueCatPlugin: Plugin {
     }
 }
 
+// Registered on runtimes below the StoreKit 2 floor: every command is
+// rejected instead of crashing at class load.
+class UnsupportedRevenueCatPlugin: Plugin {
+    @objc public func queryProducts(_ invoke: Invoke) throws { rejectAll(invoke) }
+    @objc public func purchase(_ invoke: Invoke) throws { rejectAll(invoke) }
+    @objc public func queryPurchases(_ invoke: Invoke) throws { rejectAll(invoke) }
+    @objc public func finishTransaction(_ invoke: Invoke) throws { rejectAll(invoke) }
+
+    private func rejectAll(_ invoke: Invoke) {
+        invoke.reject("StoreKit 2 requires iOS 15 / macOS 12 or newer.")
+    }
+}
+
 @_cdecl("init_plugin_revenuecat")
 func initPlugin() -> Plugin {
-    return RevenueCatPlugin()
+    if #available(iOS 15.0, macOS 12.0, *) {
+        return RevenueCatPlugin()
+    }
+    return UnsupportedRevenueCatPlugin()
 }
