@@ -1,6 +1,8 @@
 //! Tauri IPC tests on the mock runtime: every command is invoked through the
 //! real Tauri invoke pipeline (`get_ipc_response`), exercising the same
 //! serialization boundary the webview uses — no display server required.
+//! The demo is configured at runtime, so each test calls `configure_demo`
+//! first (empty key -> embedded mock backend).
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
@@ -15,8 +17,7 @@ fn build_app() -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
         .invoke_handler(revenuecat_tauri_demo::handlers())
         .build(mock_context(noop_assets()))
         .unwrap();
-    let state = tauri::async_runtime::block_on(revenuecat_tauri_demo::init_demo()).unwrap();
-    app.manage(state);
+    app.manage(revenuecat_tauri_demo::DemoState::default());
     let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .unwrap();
@@ -48,22 +49,41 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
     .map(|body| body.deserialize::<Value>().unwrap())
 }
 
+/// Configures the embedded-mock backend and returns the session info.
+fn configure_mock(webview: &WebviewWindow<MockRuntime>, app_user_id: Option<&str>) -> Value {
+    invoke(
+        webview,
+        "configure_demo",
+        json!({ "apiKey": null, "appUserId": app_user_id }),
+    )
+    .unwrap()
+}
+
 #[test]
-fn full_purchase_flow_through_tauri_ipc() {
-    // Arrange
+fn configure_selects_the_embedded_mock_backend() {
     let (_app, webview) = build_app();
 
-    // Act / Assert: session starts anonymous against the embedded mock.
-    let session = invoke(&webview, "session_info", json!({})).unwrap();
+    // Before configuration, commands report a configuration error.
+    let error = invoke(&webview, "get_offerings", json!({})).unwrap_err();
+    assert_eq!(error["code"], "ConfigurationError");
+
+    // Configuring with no key selects the offline mock + test store.
+    let session = configure_mock(&webview, None);
+    assert_eq!(session["configured"], true);
+    assert_eq!(session["backend"], "embedded mock");
+    assert_eq!(session["store"], "test store");
     assert_eq!(session["is_anonymous"], true);
     assert!(session["app_user_id"]
         .as_str()
         .unwrap()
         .starts_with("$RCAnonymousID:"));
-    assert!(session["mock_url"]
-        .as_str()
-        .unwrap()
-        .starts_with("http://127.0.0.1:"));
+}
+
+#[test]
+fn full_purchase_flow_through_tauri_ipc() {
+    // Arrange
+    let (_app, webview) = build_app();
+    configure_mock(&webview, Some("gon"));
 
     // Offerings arrive resolved with store products and prices.
     let offerings = invoke(&webview, "get_offerings", json!({})).unwrap();
@@ -93,6 +113,7 @@ fn full_purchase_flow_through_tauri_ipc() {
 #[test]
 fn purchase_of_unknown_package_returns_typed_error() {
     let (_app, webview) = build_app();
+    configure_mock(&webview, None);
 
     let error = invoke(&webview, "purchase", json!({"packageId": "$rc_lifetime"})).unwrap_err();
 
@@ -103,6 +124,7 @@ fn purchase_of_unknown_package_returns_typed_error() {
 #[test]
 fn login_and_logout_round_trip_through_ipc() {
     let (_app, webview) = build_app();
+    configure_mock(&webview, None);
 
     // Purchase anonymously, then attach the history to a named account.
     invoke(&webview, "purchase", json!({"packageId": "$rc_annual"})).unwrap();
@@ -127,6 +149,7 @@ fn login_and_logout_round_trip_through_ipc() {
 #[test]
 fn restore_via_ipc_refreshes_customer_info() {
     let (_app, webview) = build_app();
+    configure_mock(&webview, None);
 
     let info = invoke(&webview, "restore", json!({})).unwrap();
 

@@ -25,6 +25,10 @@
 
 * { box-sizing: border-box; }
 
+/* `hidden` must win over layout displays (.ledger uses grid, chips use
+   inline-block), otherwise hidden panels stay visible. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -295,3 +299,84 @@ dialog menu {
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; }
 }
+
+/* ---- setup / configuration screen ---- */
+
+.setup {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.setup-card {
+  width: min(30rem, 100%);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: 0.9rem;
+  padding: var(--space-3);
+  box-shadow: 0 1px 2px oklch(24% 0.015 60 / 0.06), 0 8px 24px oklch(24% 0.015 60 / 0.05);
+}
+
+.setup-card h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+}
+
+.setup-card label {
+  display: block;
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.setup-card label .muted { color: var(--ink-soft); font-weight: 400; }
+
+.setup-card input {
+  width: 100%;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.55rem;
+  background: var(--paper);
+  color: var(--ink);
+}
+.setup-card input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.mode-hints {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  background: var(--paper);
+  border: 1px dashed var(--rule);
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.mode-hints li { padding: 0.15rem 0; }
+.mode-hints li + li { border-top: 1px dashed var(--rule); }
+.mode-hints code { font-family: var(--font-mono); color: var(--ink); }
+.mode-hints b { color: var(--ink); }
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.setup-error {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  border-radius: 0.55rem;
+  background: oklch(94% 0.06 22);
+  color: oklch(42% 0.16 22);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.chip.identified { border-color: var(--active); color: var(--active); }
+#backend-chip { font-family: var(--font-mono); font-size: 0.72rem; }

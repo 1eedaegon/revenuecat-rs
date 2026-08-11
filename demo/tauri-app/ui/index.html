@@ -12,20 +12,53 @@
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
         <h1>revenuecat-rs</h1>
-        <p class="tagline">Rust SDK &middot; Test Store &middot; embedded mock backend</p>
+        <p class="tagline">Rust SDK on Tauri</p>
       </div>
     </div>
     <div class="session" aria-live="polite">
-      <span id="user-chip" class="chip">…</span>
-      <button id="login-btn" class="ghost">Log in</button>
+      <span id="backend-chip" class="chip" hidden></span>
+      <span id="user-chip" class="chip" hidden>…</span>
+      <button id="login-btn" class="ghost" hidden>Log in</button>
       <button id="logout-btn" class="ghost" hidden>Log out</button>
+      <button id="reconfigure-btn" class="ghost" hidden>Change key</button>
     </div>
   </header>
 
-  <main class="ledger">
+  <!-- Configuration screen: pick a backend/store by entering a key. -->
+  <section id="setup" class="setup" aria-labelledby="setup-heading">
+    <div class="setup-card">
+      <h2 id="setup-heading">Configure the SDK</h2>
+      <p class="panel-note">
+        The Rust SDK is configured at runtime, entirely from this Tauri app.
+      </p>
+      <form id="setup-form">
+        <label for="api-key">RevenueCat API key <span class="muted">(optional)</span></label>
+        <input id="api-key" name="apiKey" type="text" spellcheck="false"
+               autocapitalize="off" autocomplete="off"
+               placeholder="test_… / appl_… / goog_…" />
+        <label for="app-user">App user id <span class="muted">(optional)</span></label>
+        <input id="app-user" name="appUser" type="text" spellcheck="false"
+               autocapitalize="off" autocomplete="off" placeholder="anonymous" />
+
+        <ul class="mode-hints">
+          <li><b>Empty</b> → embedded mock backend, fully offline</li>
+          <li><code>test_…</code> → real RevenueCat backend, simulated Test Store (no store account)</li>
+          <li><code>appl_…</code> / <code>goog_…</code> → StoreKit&nbsp;2 / Play Billing sandbox (mobile)</li>
+        </ul>
+
+        <div class="setup-actions">
+          <button type="button" id="use-mock-btn" class="ghost">Start with mock</button>
+          <button type="submit" class="primary">Configure</button>
+        </div>
+      </form>
+      <p id="setup-error" class="setup-error" role="alert" hidden></p>
+    </div>
+  </section>
+
+  <main id="ledger" class="ledger" hidden>
     <section class="panel catalog" aria-labelledby="catalog-heading">
       <h2 id="catalog-heading">Catalog <span class="rule"></span></h2>
-      <p class="panel-note">Packages resolved from <code>/v1/subscribers/&hellip;/offerings</code> joined with Web Billing products.</p>
+      <p class="panel-note">Packages resolved from <code>/v1/subscribers/&hellip;/offerings</code> joined with store products.</p>
       <ul id="packages" class="packages"></ul>
       <div class="row-actions">
         <button id="restore-btn" class="ghost">Restore purchases</button>

@@ -1,4 +1,5 @@
 // revenuecat-rs demo frontend: drives the SDK entirely through Tauri IPC.
+// The SDK is configured at runtime from the setup screen (mock / test_ / store key).
 
 const invoke = window.__TAURI__.core.invoke;
 
@@ -20,25 +21,77 @@ function log(message, isError = false) {
   logEl.prepend(item);
 }
 
+function errorText(error) {
+  return typeof error === "object" && error !== null
+    ? `${error.code}: ${error.message}`
+    : String(error);
+}
+
 async function call(cmd, args = {}) {
   try {
     const result = await invoke(cmd, args);
     log(`${cmd} ✓`);
     return result;
   } catch (error) {
-    const message = typeof error === "object" ? `${error.code}: ${error.message}` : String(error);
-    log(`${cmd} ✗ ${message}`, true);
+    log(`${cmd} ✗ ${errorText(error)}`, true);
     throw error;
   }
 }
 
+// -- Configuration screen ---------------------------------------------------
+
+async function configure(apiKey, appUser) {
+  const errorEl = el("setup-error");
+  errorEl.hidden = true;
+  try {
+    const session = await call("configure_demo", {
+      apiKey: apiKey || null,
+      appUserId: appUser || null,
+    });
+    el("setup").hidden = true;
+    el("ledger").hidden = false;
+    renderSession(session);
+    log(`configured — backend: ${session.backend}, store: ${session.store}`);
+    await refreshAll();
+  } catch (error) {
+    errorEl.textContent = errorText(error);
+    errorEl.hidden = false;
+  }
+}
+
+el("setup-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  configure(el("api-key").value.trim(), el("app-user").value.trim());
+});
+
+el("use-mock-btn").addEventListener("click", () => {
+  configure("", el("app-user").value.trim());
+});
+
+el("reconfigure-btn").addEventListener("click", () => {
+  el("ledger").hidden = true;
+  el("setup").hidden = false;
+  for (const id of ["backend-chip", "user-chip", "login-btn", "logout-btn", "reconfigure-btn"]) {
+    el(id).hidden = true;
+  }
+});
+
+// -- Session + rendering ----------------------------------------------------
+
 function renderSession(session) {
+  const backend = el("backend-chip");
+  backend.hidden = false;
+  backend.textContent = `${session.backend} · ${session.store}`;
+
   const chip = el("user-chip");
+  chip.hidden = false;
   chip.textContent = session.app_user_id;
   chip.title = session.app_user_id;
   chip.classList.toggle("identified", !session.is_anonymous);
+
   el("login-btn").hidden = !session.is_anonymous;
   el("logout-btn").hidden = session.is_anonymous;
+  el("reconfigure-btn").hidden = false;
 }
 
 function packageLabel(type) {
@@ -50,7 +103,13 @@ function renderOfferings(offerings) {
   const current = offerings.current_offering_id
     ? offerings.all[offerings.current_offering_id]
     : null;
-  if (!current) return;
+  if (!current) {
+    const empty = document.createElement("li");
+    empty.className = "empty";
+    empty.textContent = "No current offering — check the offering in your RevenueCat dashboard.";
+    packagesEl.append(empty);
+    return;
+  }
 
   for (const pkg of current.packages) {
     const item = document.createElement("li");
@@ -75,11 +134,15 @@ function renderOfferings(offerings) {
     buy.textContent = "Buy";
     buy.addEventListener("click", async () => {
       buy.disabled = true;
+      buy.textContent = "…";
       try {
         const result = await call("purchase", { packageId: pkg.identifier });
         renderCustomer(result.customer_info);
+      } catch {
+        // Error already logged; leave the ledger unchanged.
       } finally {
         buy.disabled = false;
+        buy.textContent = "Buy";
       }
     });
 
@@ -176,4 +239,4 @@ el("logout-btn").addEventListener("click", async () => {
   renderSession(await call("session_info"));
 });
 
-refreshAll().then(() => log("SDK ready — Test Store via embedded mock backend"));
+log("Enter an API key or start with the embedded mock.");
