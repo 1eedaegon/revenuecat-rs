@@ -17,6 +17,40 @@ revenuecat-rs = "0.5"   # imported in code as `revenuecat`
 
 ## Usage
 
+### Getting Started(In a Tauri app)
+
+The SDK is instance-based: configure once, manage it, borrow in commands.
+Every model and `revenuecat::Error` are `Serialize`, so commands return them
+directly (with a stable error `code` for the UI).
+
+```rust
+struct AppState { purchases: revenuecat::Purchases }
+
+#[tauri::command]
+async fn purchase(
+    state: tauri::State<'_, AppState>,
+    package_id: String,   // Tauri maps JS `packageId` -> Rust `package_id`
+) -> Result<revenuecat::PurchaseResult, revenuecat::Error> {
+    let offerings = state.purchases.get_offerings().await?;
+    let package = offerings.current().and_then(|o| o.package(&package_id)).unwrap();
+    state.purchases.purchase_package(package).await
+}
+
+tauri::Builder::default()
+    .setup(|app| {
+        let purchases = revenuecat::Purchases::configure(/* … */)?;
+        tauri::Manager::manage(app, AppState { purchases });
+        Ok(())
+    })
+    .invoke_handler(tauri::generate_handler![purchase /*, … */]);
+```
+
+Test commands headlessly with `tauri::test::mock_builder` + `get_ipc_response`
+(see `demo/tauri-app/src-tauri/tests/commands.rs`). 
+
+Note the ACL local origin is `tauri://localhost` on macOS/Linux but `http://tauri.localhost` on Windows.
+
+
 ### Configure
 
 ```rust
@@ -198,37 +232,6 @@ let purchases = Purchases::configure(
 `crates/tauri-plugin-revenuecat` implements this over StoreKit 2 (Swift) and
 Play Billing (Kotlin) for Tauri mobile apps.
 
-### In a Tauri app
-
-The SDK is instance-based: configure once, manage it, borrow in commands.
-Every model and `revenuecat::Error` are `Serialize`, so commands return them
-directly (with a stable error `code` for the UI).
-
-```rust
-struct AppState { purchases: revenuecat::Purchases }
-
-#[tauri::command]
-async fn purchase(
-    state: tauri::State<'_, AppState>,
-    package_id: String,   // Tauri maps JS `packageId` -> Rust `package_id`
-) -> Result<revenuecat::PurchaseResult, revenuecat::Error> {
-    let offerings = state.purchases.get_offerings().await?;
-    let package = offerings.current().and_then(|o| o.package(&package_id)).unwrap();
-    state.purchases.purchase_package(package).await
-}
-
-tauri::Builder::default()
-    .setup(|app| {
-        let purchases = revenuecat::Purchases::configure(/* … */)?;
-        tauri::Manager::manage(app, AppState { purchases });
-        Ok(())
-    })
-    .invoke_handler(tauri::generate_handler![purchase /*, … */]);
-```
-
-Test commands headlessly with `tauri::test::mock_builder` + `get_ipc_response`
-(see `demo/tauri-app/src-tauri/tests/commands.rs`). Note the ACL local origin
-is `tauri://localhost` on macOS/Linux but `http://tauri.localhost` on Windows.
 
 ## Workspace
 
