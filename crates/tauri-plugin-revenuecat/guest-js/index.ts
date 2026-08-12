@@ -5,7 +5,7 @@
  * then drive RevenueCat entirely from the webview:
  *
  * ```ts
- * import { configure, getOfferings, purchasePackage } from "tauri-plugin-revenuecat-api";
+ * import { configure, getOfferings, purchasePackage } from "tauri-plugin-revenuecat";
  *
  * await configure({ apiKey: "test_...", appUserId: "gon" });
  * const offerings = await getOfferings();

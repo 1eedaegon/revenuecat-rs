@@ -17,38 +17,19 @@ revenuecat-rs = "1.0"   # imported in code as `revenuecat`
 
 ## Usage
 
-### Getting Started(In a Tauri app)
+### In a Tauri app
 
-The SDK is instance-based: configure once, manage it, borrow in commands.
-Every model and `revenuecat::Error` are `Serialize`, so commands return them
-directly (with a stable error `code` for the UI).
-
-```rust
-struct AppState { purchases: revenuecat::Purchases }
-
-#[tauri::command]
-async fn purchase(
-    state: tauri::State<'_, AppState>,
-    package_id: String,   // Tauri maps JS `packageId` -> Rust `package_id`
-) -> Result<revenuecat::PurchaseResult, revenuecat::Error> {
-    let offerings = state.purchases.get_offerings().await?;
-    let package = offerings.current().and_then(|o| o.package(&package_id)).unwrap();
-    state.purchases.purchase_package(package).await
-}
-
-tauri::Builder::default()
-    .setup(|app| {
-        let purchases = revenuecat::Purchases::configure(/* … */)?;
-        tauri::Manager::manage(app, AppState { purchases });
-        Ok(())
-    })
-    .invoke_handler(tauri::generate_handler![purchase /*, … */]);
-```
+Two ways to use the SDK in Tauri, both via `tauri-plugin-revenuecat`: a
+**TypeScript** track where the plugin owns the SDK and you call it from the
+webview, and a **Rust** track where you own the `Purchases` instance. Full
+examples of both are in
+[Two tracks in a Tauri app](#two-tracks-in-a-tauri-app-typescript-or-rust)
+below. Every model and `revenuecat::Error` is `Serialize`, so commands return
+them directly with a stable error `code` for the UI.
 
 Test commands headlessly with `tauri::test::mock_builder` + `get_ipc_response`
-(see `demo/tauri-app/src-tauri/tests/commands.rs`). 
-
-Note the ACL local origin is `tauri://localhost` on macOS/Linux but `http://tauri.localhost` on Windows.
+(see `demo/tauri-app/src-tauri/tests/commands.rs`). The ACL local origin is
+`tauri://localhost` on macOS/Linux, `http://tauri.localhost` on Windows.
 
 
 ### Configure
@@ -232,35 +213,30 @@ let purchases = Purchases::configure(
 `crates/tauri-plugin-revenuecat` implements this over StoreKit 2 (Swift) and
 Play Billing (Kotlin) for Tauri mobile apps.
 
-### From the frontend (JS/TS)
+### Two tracks in a Tauri app: TypeScript or Rust
 
-`tauri-plugin-revenuecat` also exposes the SDK to the webview, so a frontend can
-drive RevenueCat with no per-app Rust command glue. The `revenuecat-rs` crate
-stays pure Rust; the plugin is the JS/TS layer. Register the plugin, grant its
-capability, then call the typed bindings.
-
-Rust:
+The plugin supports two ways to use RevenueCat. Both register the plugin the
+same way; they differ in **who owns the SDK**.
 
 ```rust
 tauri::Builder::default()
     .plugin(tauri_plugin_revenuecat::init())
-    // ... your setup / other plugins
+    // ... your other setup
 ```
 
-Grant the plugin's commands in `src-tauri/capabilities/default.json`:
+#### Track 1 — TypeScript (the plugin owns the SDK)
+
+Drive everything from the webview, no per-app Rust glue. Grant the commands in
+`src-tauri/capabilities/default.json`:
 
 ```json
-{
-  "identifier": "default",
-  "windows": ["main"],
-  "permissions": ["revenuecat:default"]
-}
+{ "identifier": "default", "windows": ["main"], "permissions": ["revenuecat:default"] }
 ```
 
-Frontend — install `tauri-plugin-revenuecat-api` and call the typed wrappers:
+Then `npm i tauri-plugin-revenuecat` and call the typed wrappers:
 
 ```ts
-import { configure, getOfferings, purchasePackage } from "tauri-plugin-revenuecat-api";
+import { configure, getOfferings, purchasePackage } from "tauri-plugin-revenuecat";
 
 // appl_/goog_ keys wire the native store automatically on mobile.
 await configure({ apiKey: "test_YOUR_KEY", appUserId: "gon" });
@@ -269,14 +245,43 @@ const offerings = await getOfferings();       // typed: Offerings
 const pkg = offerings.current?.packages[0];
 if (pkg) {
   const result = await purchasePackage(pkg.identifier);
-  const pro = result.customer_info.entitlements.all.pro;
-  console.log("pro active:", pro?.is_active ?? false);
+  console.log("pro active:", result.customer_info.entitlements.all.pro?.is_active ?? false);
 }
 ```
 
 Model types (`Offerings`, `CustomerInfo`, `Paywall`, …) ship with the package.
-Also available: `getCustomerInfo`, `restore`, `logIn`, `logOut`, `setEmail`,
-`sessionInfo`.
+Also: `getCustomerInfo`, `restore`, `logIn`, `logOut`, `setEmail`, `sessionInfo`.
+
+#### Track 2 — Rust (you own the SDK)
+
+Keep the SDK logic in Rust and expose your own commands; the plugin supplies the
+native store on mobile via `store_billing`.
+
+```rust
+.setup(|app| {
+    let mut builder = revenuecat::Configuration::builder("appl_or_test_KEY");
+    // Native store on mobile; Err on desktop (a `test_` key needs no store).
+    if let Ok(billing) = tauri_plugin_revenuecat::store_billing(app.handle()) {
+        builder = builder.store_billing(billing);
+    }
+    app.manage(revenuecat::Purchases::configure(builder.build()?)?);
+    Ok(())
+})
+
+#[tauri::command]
+async fn buy(
+    purchases: tauri::State<'_, revenuecat::Purchases>,
+    package_id: String,
+) -> Result<revenuecat::PurchaseResult, revenuecat::Error> {
+    let purchases = purchases.inner().clone(); // Purchases is Clone (Arc-backed)
+    let offerings = purchases.get_offerings().await?;
+    let pkg = offerings.current().and_then(|o| o.package(&package_id)).unwrap();
+    purchases.purchase_package(pkg).await
+}
+```
+
+Same crate, two faces: `revenuecat-rs` (the crate) stays pure Rust; the plugin
+adds the TypeScript track on top.
 
 ## Workspace
 
@@ -284,7 +289,7 @@ Also available: `getCustomerInfo`, `restore`, `logIn`, `logOut`, `setEmail`,
 |---|---|
 | `crates/revenuecat` | The SDK: models, HTTP client, backend ops, `Purchases` facade, `StoreBilling` trait + simulated Test Store |
 | `crates/revenuecat-mock` | In-process mock of the RevenueCat API (axum), signs responses with a test Ed25519 chain |
-| `crates/tauri-plugin-revenuecat` | Tauri 2 plugin: StoreKit 2 / Play Billing behind `StoreBilling`, plus SDK-over-IPC commands + a typed JS/TS package (`tauri-plugin-revenuecat-api`) |
+| `crates/tauri-plugin-revenuecat` | Tauri 2 plugin: StoreKit 2 / Play Billing behind `StoreBilling`, plus SDK-over-IPC commands + a typed JS/TS package (`tauri-plugin-revenuecat` on npm) |
 | `demo/tauri-app` | Tauri 2 demo, configured at runtime from a key input |
 
 ## Demo
