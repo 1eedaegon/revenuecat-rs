@@ -1,6 +1,6 @@
 //! Typed operations over the RevenueCat HTTP API, mirroring `Backend` in the
-//! official SDKs. Request/response shapes follow the wire formats extracted
-//! from purchases-android (`Backend.kt`), purchases-ios (`Operations/`), and
+//! official SDKs. Request/response shapes follow the wire formats of
+//! purchases-android (`Backend.kt`), purchases-ios (`Operations/`), and
 //! purchases-js (`backend.ts`).
 
 use std::collections::BTreeMap;

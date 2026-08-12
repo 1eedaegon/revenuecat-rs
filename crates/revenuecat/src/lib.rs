@@ -3,8 +3,7 @@
 //! Unofficial RevenueCat SDK for Rust, protocol-compatible with the official
 //! [purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT).
 //! The server-side contract — endpoints, headers, custom ETag caching, error
-//! codes, and the `POST /v1/receipts` body — was extracted from those SDKs'
-//! sources and test fixtures.
+//! codes, and the `POST /v1/receipts` body — matches those SDKs' wire format.
 //!
 //! ```no_run
 //! use revenuecat::{CacheFetchPolicy, Configuration, Purchases};

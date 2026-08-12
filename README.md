@@ -1,8 +1,8 @@
 # revenuecat-rs
 
 **RevenueCat SDK for Rust**, protocol-compatible with the official
-[purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT). Wire
-formats were extracted from their sources and test fixtures.
+[purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT), down
+to the same wire formats.
 
 A `test_` (Test Store) key needs **no native store** — purchases are simulated
 end to end, so the SDK, its tests, and the Tauri demo all run on desktop and
@@ -305,8 +305,8 @@ purchase end to end against the real Test Store backend.
 | Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 config fully typed; v2 tree exposed as raw JSON; you render (demo does) |
 | Customer center UI | ❌ out of scope |
 
-Not affiliated with RevenueCat. Only the documented surface plus the endpoints
-the official MIT-licensed clients use is spoken.
+Speaks the documented surface plus the endpoints the official MIT-licensed
+clients use.
 
 ## Migration
 
