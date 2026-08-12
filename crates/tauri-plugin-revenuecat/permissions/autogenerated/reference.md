@@ -13,6 +13,7 @@ Configure the SDK and drive offerings, purchases, customer info, and identity fr
 - `allow-log-in`
 - `allow-log-out`
 - `allow-set-email`
+- `allow-manage-subscriptions`
 - `allow-query-products`
 - `allow-purchase`
 - `allow-query-purchases`
@@ -179,6 +180,32 @@ Enables the log_out command without any pre-configured scope.
 <td>
 
 Denies the log_out command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:allow-manage-subscriptions`
+
+</td>
+<td>
+
+Enables the manage_subscriptions command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:deny-manage-subscriptions`
+
+</td>
+<td>
+
+Denies the manage_subscriptions command without any pre-configured scope.
 
 </td>
 </tr>

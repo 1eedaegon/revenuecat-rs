@@ -14,6 +14,7 @@ const COMMANDS: &[&str] = &[
     "log_in",
     "log_out",
     "set_email",
+    "manage_subscriptions",
 ];
 
 fn main() {

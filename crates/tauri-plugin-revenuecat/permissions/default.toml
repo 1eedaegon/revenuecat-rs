@@ -12,6 +12,7 @@ permissions = [
     "allow-log-in",
     "allow-log-out",
     "allow-set-email",
+    "allow-manage-subscriptions",
     # Native store bridge (internal; invoked over the mobile plugin channel).
     "allow-query-products",
     "allow-purchase",

@@ -10,7 +10,11 @@ use revenuecat::{
     ErrorCode, Offerings, PurchaseResult, Purchases,
 };
 use serde::{Deserialize, Serialize};
-use tauri::{command, AppHandle, Manager, Runtime, State};
+use tauri::{command, AppHandle, Emitter, Manager, Runtime, State};
+
+/// Emitted to the webview whenever the customer info changes (purchase,
+/// restore, login, …), mirroring RevenueCat's `updatedCustomerInfoListener`.
+pub const CUSTOMER_INFO_UPDATED_EVENT: &str = "revenuecat:customer-info-updated";
 
 /// Managed state: the SDK instance, set by [`configure`].
 #[derive(Default)]
@@ -140,6 +144,14 @@ pub(crate) async fn configure<R: Runtime>(
     };
 
     let purchases = Purchases::configure(builder.build()?)?;
+
+    // Bridge the SDK's customer-info updates to a Tauri event the webview can
+    // subscribe to (renewals/refunds land here once the SDK refreshes).
+    let handle = app.clone();
+    purchases.set_customer_info_listener(move |info| {
+        let _ = handle.emit(CUSTOMER_INFO_UPDATED_EVENT, info);
+    });
+
     let session = info_of(&Some(Configured {
         purchases: purchases.clone(),
         store: store.to_owned(),
@@ -209,6 +221,18 @@ pub(crate) async fn log_out(sdk: State<'_, Sdk>) -> Result<CustomerInfo, Error> 
 #[command]
 pub(crate) async fn set_email(sdk: State<'_, Sdk>, email: String) -> Result<(), Error> {
     sdk.purchases()?.set_email(email).await
+}
+
+/// The store's manage/cancel page for the current user, or `None` if the store
+/// doesn't provide one. Open it with `tauri-plugin-opener`; on the App Store /
+/// Play Store it lands on the native subscription-management surface.
+#[command]
+pub(crate) async fn manage_subscriptions(sdk: State<'_, Sdk>) -> Result<Option<String>, Error> {
+    Ok(sdk
+        .purchases()?
+        .get_customer_info(CacheFetchPolicy::default())
+        .await?
+        .management_url)
 }
 
 #[cfg(test)]

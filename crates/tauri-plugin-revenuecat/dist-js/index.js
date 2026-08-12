@@ -18,6 +18,7 @@
  * ConfigureOptions, LoginResult) are camelCase.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 // -- Commands ---------------------------------------------------------------
 const PLUGIN = "plugin:revenuecat";
 /** Configure the SDK. On mobile, `appl_`/`goog_` keys wire the native store. */
@@ -55,4 +56,20 @@ export async function logOut() {
 /** Set the reserved `$email` subscriber attribute. */
 export async function setEmail(email) {
     await invoke(`${PLUGIN}|set_email`, { email });
+}
+/**
+ * The store's manage/cancel page for the current user, or `null` if none.
+ * Open it with `tauri-plugin-opener`; on the App Store / Play Store it lands on
+ * the native subscription-management surface.
+ */
+export async function manageSubscriptions() {
+    return await invoke(`${PLUGIN}|manage_subscriptions`);
+}
+/**
+ * Subscribe to customer-info updates — fired on purchase, restore, login, and
+ * whenever the SDK refreshes (mirrors RevenueCat's updatedCustomerInfoListener).
+ * Returns an unlisten function.
+ */
+export async function onCustomerInfoUpdated(handler) {
+    return await listen("revenuecat:customer-info-updated", (event) => handler(event.payload));
 }

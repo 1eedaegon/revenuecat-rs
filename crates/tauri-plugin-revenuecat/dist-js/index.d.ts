@@ -17,6 +17,7 @@
  * ...) are snake_case; the plugin's own envelope types (SessionInfo,
  * ConfigureOptions, LoginResult) are camelCase.
  */
+import { type UnlistenFn } from "@tauri-apps/api/event";
 export type ProductType = "subscription" | "consumable" | "non_consumable" | "unknown";
 export type PeriodType = "normal" | "intro" | "trial" | "prepaid" | "unknown";
 export type Store = "app_store" | "mac_app_store" | "play_store" | "stripe" | "promotional" | "amazon" | "rc_billing" | "external" | "paddle" | "test_store" | "unknown";
@@ -233,3 +234,15 @@ export declare function logIn(appUserId: string): Promise<LoginResult>;
 export declare function logOut(): Promise<CustomerInfo>;
 /** Set the reserved `$email` subscriber attribute. */
 export declare function setEmail(email: string): Promise<void>;
+/**
+ * The store's manage/cancel page for the current user, or `null` if none.
+ * Open it with `tauri-plugin-opener`; on the App Store / Play Store it lands on
+ * the native subscription-management surface.
+ */
+export declare function manageSubscriptions(): Promise<string | null>;
+/**
+ * Subscribe to customer-info updates — fired on purchase, restore, login, and
+ * whenever the SDK refreshes (mirrors RevenueCat's updatedCustomerInfoListener).
+ * Returns an unlisten function.
+ */
+export declare function onCustomerInfoUpdated(handler: (info: CustomerInfo) => void): Promise<UnlistenFn>;

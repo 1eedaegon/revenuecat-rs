@@ -250,7 +250,19 @@ if (pkg) {
 ```
 
 Model types (`Offerings`, `CustomerInfo`, `Paywall`, …) ship with the package.
-Also: `getCustomerInfo`, `restore`, `logIn`, `logOut`, `setEmail`, `sessionInfo`.
+Also: `getCustomerInfo`, `restore`, `logIn`, `logOut`, `setEmail`, `sessionInfo`,
+`manageSubscriptions` (the store's manage/cancel URL).
+
+Subscribe to customer-info changes (purchase, restore, refresh) — the
+`updatedCustomerInfoListener` equivalent:
+
+```ts
+import { onCustomerInfoUpdated } from "tauri-plugin-revenuecat";
+
+const unlisten = await onCustomerInfoUpdated((info) => {
+  setPro(info.entitlements.all.pro?.is_active ?? false);
+});
+```
 
 #### Track 2 — Rust (you own the SDK)
 

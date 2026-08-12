@@ -19,6 +19,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // -- Enums (string-literal unions matching the serde output) ----------------
 
@@ -331,4 +332,27 @@ export async function logOut(): Promise<CustomerInfo> {
 /** Set the reserved `$email` subscriber attribute. */
 export async function setEmail(email: string): Promise<void> {
   await invoke(`${PLUGIN}|set_email`, { email });
+}
+
+/**
+ * The store's manage/cancel page for the current user, or `null` if none.
+ * Open it with `tauri-plugin-opener`; on the App Store / Play Store it lands on
+ * the native subscription-management surface.
+ */
+export async function manageSubscriptions(): Promise<string | null> {
+  return await invoke(`${PLUGIN}|manage_subscriptions`);
+}
+
+/**
+ * Subscribe to customer-info updates — fired on purchase, restore, login, and
+ * whenever the SDK refreshes (mirrors RevenueCat's updatedCustomerInfoListener).
+ * Returns an unlisten function.
+ */
+export async function onCustomerInfoUpdated(
+  handler: (info: CustomerInfo) => void,
+): Promise<UnlistenFn> {
+  return await listen<CustomerInfo>(
+    "revenuecat:customer-info-updated",
+    (event) => handler(event.payload),
+  );
 }

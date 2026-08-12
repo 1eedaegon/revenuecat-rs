@@ -59,6 +59,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::log_in,
             commands::log_out,
             commands::set_email,
+            commands::manage_subscriptions,
         ])
         .setup(|app, _api| {
             // The configured SDK lives here; `configure` populates it.

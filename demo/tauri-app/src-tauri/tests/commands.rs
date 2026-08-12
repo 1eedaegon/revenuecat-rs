@@ -186,3 +186,42 @@ fn restore_via_ipc_refreshes_customer_info() {
         .unwrap()
         .starts_with("$RCAnonymousID:"));
 }
+
+#[test]
+fn manage_subscriptions_returns_the_store_url() {
+    let (_app, webview) = build_app();
+    configure_mock(&webview, None);
+
+    let url = invoke(
+        &webview,
+        "plugin:revenuecat|manage_subscriptions",
+        json!({}),
+    )
+    .unwrap();
+
+    assert_eq!(url, "https://apps.apple.com/account/subscriptions");
+}
+
+#[test]
+fn customer_info_update_emits_an_event() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tauri::Listener;
+
+    let (_app, webview) = build_app();
+    configure_mock(&webview, None);
+
+    let hits = Arc::new(AtomicUsize::new(0));
+    let counter = hits.clone();
+    webview.listen("revenuecat:customer-info-updated", move |_event| {
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
+
+    // A fresh fetch refreshes the SDK's customer info, notifying the listener.
+    invoke(&webview, "plugin:revenuecat|get_customer_info", json!({})).unwrap();
+
+    assert!(
+        hits.load(Ordering::SeqCst) >= 1,
+        "expected a customer-info-updated event"
+    );
+}

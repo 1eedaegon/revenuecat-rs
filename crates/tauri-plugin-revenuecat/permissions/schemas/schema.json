@@ -367,6 +367,18 @@
           "markdownDescription": "Denies the log_out command without any pre-configured scope."
         },
         {
+          "description": "Enables the manage_subscriptions command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-manage-subscriptions",
+          "markdownDescription": "Enables the manage_subscriptions command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the manage_subscriptions command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-manage-subscriptions",
+          "markdownDescription": "Denies the manage_subscriptions command without any pre-configured scope."
+        },
+        {
           "description": "Enables the purchase command without any pre-configured scope.",
           "type": "string",
           "const": "allow-purchase",
@@ -451,10 +463,10 @@
           "markdownDescription": "Denies the set_email command without any pre-configured scope."
         },
         {
-          "description": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`",
+          "description": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-manage-subscriptions`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`"
+          "markdownDescription": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-manage-subscriptions`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`"
         }
       ]
     }

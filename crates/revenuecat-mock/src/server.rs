@@ -834,7 +834,7 @@ fn subscriber_envelope(state: &ServerState, app_user_id: &str) -> Value {
             "entitlements": entitlements,
             "first_seen": iso(first_seen),
             "last_seen": iso(now),
-            "management_url": null,
+            "management_url": "https://apps.apple.com/account/subscriptions",
             "non_subscriptions": non_subscriptions,
             "original_app_user_id": app_user_id,
             "original_application_version": "1.0",
