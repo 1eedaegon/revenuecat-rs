@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.0"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.90"
@@ -28,7 +28,7 @@ dbg_macro = "deny"
 [workspace.dependencies]
 # `version` lets publishable crates (tauri-plugin-revenuecat) depend on the
 # released revenuecat-rs from crates.io while using the local path in-workspace.
-revenuecat-rs = { path = "crates/revenuecat", version = "0.5" }
+revenuecat-rs = { path = "crates/revenuecat", version = "1" }
 revenuecat-mock = { path = "crates/revenuecat-mock" }
 
 async-trait = "0.1"
