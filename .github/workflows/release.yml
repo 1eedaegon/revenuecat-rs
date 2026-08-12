@@ -41,3 +41,24 @@ jobs:
 
       - name: Publish Tauri plugin (tauri-plugin-revenuecat)
         run: cargo publish -p tauri-plugin-revenuecat --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+
+      # npm package `tauri-plugin-revenuecat` (the JS/TS bindings). Needs an
+      # NPM_TOKEN secret — an npm **Automation** token (or granular token with
+      # "bypass 2FA"), since the account has 2FA. Skips (doesn't fail the
+      # release) until the secret is set.
+      - name: Publish npm package (tauri-plugin-revenuecat)
+        working-directory: crates/tauri-plugin-revenuecat
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN not set — skipping npm publish (add the secret to enable)."
+            exit 0
+          fi
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          test "$PKG_VERSION" = "${GITHUB_REF_NAME#v}" \
+            || { echo "package.json ($PKG_VERSION) != tag (${GITHUB_REF_NAME#v})"; exit 1; }
+          npm install --no-audit --no-fund   # dev: typescript + @tauri-apps/api
+          npm run build                      # regenerate dist-js from guest-js
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          npm publish                        # Automation token bypasses the OTP
