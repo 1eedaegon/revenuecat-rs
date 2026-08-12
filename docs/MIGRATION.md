@@ -21,7 +21,7 @@ SDK, from raw REST calls, and how breaking changes are handled here.
 upgrading:
 
 ```toml
-revenuecat-rs = "0.4"   # 0.4.x — review notes before moving to 0.5
+revenuecat-rs = "0.4"   # 0.4.x, review notes before moving to 0.5
 ```
 
 Breaking changes are called out in the GitHub release for each tag. The public
@@ -36,7 +36,7 @@ Two differences dominate; the rest is a near-mechanical rename.
 
 The native SDKs expose a process-wide singleton after `configure`
 (`Purchases.shared` / `Purchases.sharedInstance`). `revenuecat-rs` returns the
-instance and lets **you** own it — configure once and manage it (in a Tauri
+instance and lets **you** own it: configure once and manage it (in a Tauri
 app, put it in state and borrow it in commands):
 
 ```rust
@@ -48,7 +48,7 @@ let purchases = revenuecat::Purchases::configure(
 let offerings = purchases.get_offerings().await?;
 ```
 
-No hidden global state, no `configure`-before-use ordering traps — the type
+No hidden global state, no `configure`-before-use ordering traps: the type
 system enforces that you have a configured instance.
 
 ### 2. You already speak the *modern* vocabulary
@@ -83,12 +83,12 @@ delegate/stream maps to `purchases.set_customer_info_listener(...)`.
 ### 3. The store: `StoreBilling` instead of a bundled StoreKit/Billing layer
 
 The native SDKs bundle StoreKit / Play Billing. Here the store is a trait you
-supply — see the [`StoreBilling`](../README.md#real-stores--the-storebilling-trait)
+supply: see the [`StoreBilling`](../README.md#real-stores-the-storebilling-trait)
 section. Consequences that mirror the official SDKs:
 
 - **StoreKit version.** `tauri-plugin-revenuecat` implements `StoreBilling` over
   **StoreKit 2** (iOS 15+/macOS 12+) and Play Billing. This is the same reason
-  RevenueCat's own v5 leans on StoreKit 2 — the modern, Swift-concurrency API.
+  RevenueCat's own v5 leans on StoreKit 2, the modern, Swift-concurrency API.
 - **"Observer mode" analog.** RevenueCat renamed observer mode to
   `purchasesAreCompletedBy`. The equivalent here is simply *your* `StoreBilling`
   impl: you own the store transaction and decide when to
@@ -118,9 +118,9 @@ Entitlements verification. Endpoint → method map:
 | `POST /v1/diagnostics` | `flush_diagnostics()` (opt-in) |
 
 Keep your existing RevenueCat **dashboard** setup (offerings, entitlements,
-products) — this is a client for the same backend, not a replacement for it.
+products). This is a client for the same backend, not a replacement for it.
 
 ## See also
 
 - [Supported platforms & requirements](../README.md#supported-platforms--requirements)
-- [`StoreBilling` trait](../README.md#real-stores--the-storebilling-trait)
+- [`StoreBilling` trait](../README.md#real-stores-the-storebilling-trait)

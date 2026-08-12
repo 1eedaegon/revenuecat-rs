@@ -1,4 +1,4 @@
-/* revenuecat-rs demo — "receipt ledger" direction: warm paper, ink text,
+/* revenuecat-rs demo, "receipt ledger" direction: warm paper, ink text,
    coral accent, monospaced numerals, dashed receipt rules. */
 
 :root {
@@ -311,7 +311,7 @@ dialog menu {
   padding: 0;
   background: transparent;
   /* Explicit positioning (not margin:auto) so a modal dialog centers the same
-     way in WebKit — Tauri's macOS/iOS webview — and Blink. Bottom sheet on
+     way in WebKit (Tauri's macOS/iOS webview) and Blink. Bottom sheet on
      phones; centered card on desktop. The side inset keeps the sheet (and the
      close button's focus ring) off the screen edge. */
   width: min(26rem, calc(100% - 2 * var(--space-2)));

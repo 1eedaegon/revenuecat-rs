@@ -51,7 +51,7 @@ async function configure(apiKey, appUser) {
     el("setup").hidden = true;
     el("ledger").hidden = false;
     renderSession(session);
-    log(`configured — backend: ${session.backend}, store: ${session.store}`);
+    log(`configured, backend: ${session.backend}, store: ${session.store}`);
     await refreshAll();
   } catch (error) {
     errorEl.textContent = errorText(error);
@@ -111,7 +111,7 @@ function renderOfferings(offerings) {
   if (!current) {
     const empty = document.createElement("li");
     empty.className = "empty";
-    empty.textContent = "No current offering — check the offering in your RevenueCat dashboard.";
+    empty.textContent = "No current offering. Check the offering in your RevenueCat dashboard.";
     packagesEl.append(empty);
     return;
   }
@@ -291,7 +291,7 @@ function renderPaywall(offering) {
     const icon = document.createElement("span");
     icon.className = "pw-feature-icon"; // checkmark drawn in CSS
     const text = document.createElement("span");
-    text.textContent = f.content ? `${f.title} — ${f.content}` : f.title;
+    text.textContent = f.content ? `${f.title}: ${f.content}` : f.title;
     li.append(icon, text);
     features.append(li);
   }
@@ -393,7 +393,7 @@ dialog.addEventListener("close", async () => {
   const id = el("login-id").value.trim();
   if (!id) return;
   const result = await call("login", { appUserId: id });
-  log(result.created ? `user '${id}' created` : `user '${id}' existed — aliased`);
+  log(result.created ? `user '${id}' created` : `user '${id}' existed, aliased`);
   renderSession(await call("session_info"));
   renderCustomer(result.customer_info);
 });
