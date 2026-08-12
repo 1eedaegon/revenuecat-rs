@@ -1,5 +1,7 @@
-// revenuecat-rs demo frontend: drives the SDK entirely through Tauri IPC.
-// The SDK is configured at runtime from the setup screen (mock / test_ / store key).
+// revenuecat-rs demo frontend: drives the SDK through tauri-plugin-revenuecat.
+// The webview calls the plugin's `plugin:revenuecat|*` commands (the same ones
+// the typed `tauri-plugin-revenuecat-api` package wraps). `start_mock` is the
+// demo's only own command: it spawns the embedded backend for offline mode.
 
 const invoke = window.__TAURI__.core.invoke;
 
@@ -38,20 +40,38 @@ async function call(cmd, args = {}) {
   }
 }
 
+// Plugin commands are namespaced `plugin:revenuecat|<cmd>`.
+const sdk = (cmd, args = {}) => call(`plugin:revenuecat|${cmd}`, args);
+
 // -- Configuration screen ---------------------------------------------------
+
+// Remembered for the backend chip (the plugin's session doesn't track it).
+let currentBackend = null;
 
 async function configure(apiKey, appUser) {
   const errorEl = el("setup-error");
   errorEl.hidden = true;
   try {
-    const session = await call("configure_demo", {
-      apiKey: apiKey || null,
-      appUserId: appUser || null,
-    });
+    let options;
+    if (apiKey) {
+      options = { apiKey, appUserId: appUser || null };
+      currentBackend = "api.revenuecat.com";
+    } else {
+      // Offline: spawn the embedded mock and point the plugin's configure at it.
+      const mock = await call("start_mock");
+      options = {
+        apiKey: mock.apiKey,
+        proxyUrl: mock.proxyUrl,
+        verificationRootKey: mock.verificationRootKey,
+        appUserId: appUser || null,
+      };
+      currentBackend = "embedded mock";
+    }
+    const session = await sdk("configure", { options });
     el("setup").hidden = true;
     el("ledger").hidden = false;
     renderSession(session);
-    log(`configured, backend: ${session.backend}, store: ${session.store}`);
+    log(`configured, backend: ${currentBackend}, store: ${session.store}`);
     await refreshAll();
   } catch (error) {
     errorEl.textContent = errorText(error);
@@ -81,16 +101,18 @@ el("reconfigure-btn").addEventListener("click", () => {
 function renderSession(session) {
   const backend = el("backend-chip");
   backend.hidden = false;
-  backend.textContent = `${session.backend} · ${session.store}`;
+  backend.textContent = currentBackend
+    ? `${currentBackend} · ${session.store}`
+    : (session.store ?? "");
 
   const chip = el("user-chip");
   chip.hidden = false;
-  chip.textContent = session.app_user_id;
-  chip.title = session.app_user_id;
-  chip.classList.toggle("identified", !session.is_anonymous);
+  chip.textContent = session.appUserId;
+  chip.title = session.appUserId;
+  chip.classList.toggle("identified", !session.isAnonymous);
 
-  el("login-btn").hidden = !session.is_anonymous;
-  el("logout-btn").hidden = session.is_anonymous;
+  el("login-btn").hidden = !session.isAnonymous;
+  el("logout-btn").hidden = session.isAnonymous;
   el("reconfigure-btn").hidden = false;
 }
 
@@ -141,7 +163,7 @@ function renderOfferings(offerings) {
       buy.disabled = true;
       buy.textContent = "…";
       try {
-        const result = await call("purchase", { packageId: pkg.identifier });
+        const result = await sdk("purchase_package", { packageId: pkg.identifier });
         renderCustomer(result.customer_info);
       } catch {
         // Error already logged; leave the ledger unchanged.
@@ -215,13 +237,13 @@ function renderCustomer(info) {
 }
 
 async function refreshAll() {
-  renderSession(await call("session_info"));
-  renderOfferings(await call("get_offerings"));
-  renderCustomer(await call("get_customer_info"));
+  renderSession(await sdk("session_info"));
+  renderOfferings(await sdk("get_offerings"));
+  renderCustomer(await sdk("get_customer_info"));
 }
 
 el("restore-btn").addEventListener("click", async () => {
-  renderCustomer(await call("restore"));
+  renderCustomer(await sdk("restore"));
 });
 
 // -- Paywall (rendered from Offering.paywall, a dashboard v1 template) -------
@@ -340,7 +362,7 @@ function renderPaywall(offering) {
   cta.onclick = async () => {
     cta.disabled = true;
     try {
-      const result = await call("purchase", { packageId: selected });
+      const result = await sdk("purchase_package", { packageId: selected });
       renderCustomer(result.customer_info);
       el("paywall-dialog").close();
     } catch {
@@ -359,7 +381,7 @@ function renderPaywall(offering) {
     restore.href = "#";
     restore.addEventListener("click", async (e) => {
       e.preventDefault();
-      renderCustomer(await call("restore"));
+      renderCustomer(await sdk("restore"));
     });
     links.append(restore);
   }
@@ -392,15 +414,15 @@ dialog.addEventListener("close", async () => {
   if (dialog.returnValue !== "ok") return;
   const id = el("login-id").value.trim();
   if (!id) return;
-  const result = await call("login", { appUserId: id });
+  const result = await sdk("log_in", { appUserId: id });
   log(result.created ? `user '${id}' created` : `user '${id}' existed, aliased`);
-  renderSession(await call("session_info"));
-  renderCustomer(result.customer_info);
+  renderSession(await sdk("session_info"));
+  renderCustomer(result.customerInfo);
 });
 
 el("logout-btn").addEventListener("click", async () => {
-  renderCustomer(await call("logout"));
-  renderSession(await call("session_info"));
+  renderCustomer(await sdk("log_out"));
+  renderSession(await sdk("session_info"));
 });
 
 log("Enter an API key or start with the embedded mock.");

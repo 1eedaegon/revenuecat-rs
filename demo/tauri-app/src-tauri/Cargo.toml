@@ -18,16 +18,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[features]
-# The native store plugin links a Swift/Kotlin package, which needs the
-# platform toolchains. Off by default so the mock / Test Store demo builds
-# everywhere; enable to route appl_/goog_ keys through StoreKit / Play Billing.
-native-store = ["dep:tauri-plugin-revenuecat"]
-
 [dependencies]
+# The SDK runs behind the plugin now, so the plugin is always registered. Its
+# native store code is mobile-only (cfg(mobile)); desktop builds compile a
+# no-op, so a `test_` key still drives the demo everywhere.
 revenuecat-rs = { workspace = true }
 revenuecat-mock = { workspace = true }
-tauri-plugin-revenuecat = { path = "../../../crates/tauri-plugin-revenuecat", optional = true }
+tauri-plugin-revenuecat = { path = "../../../crates/tauri-plugin-revenuecat" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { version = "2", features = [] }

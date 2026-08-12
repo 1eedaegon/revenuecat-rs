@@ -299,7 +299,7 @@ Enter an API key on the setup screen to pick the backend:
 
 - **empty** → embedded mock backend, fully offline;
 - `test_…` → real RevenueCat backend, simulated Test Store (no store account);
-- `appl_…` / `goog_…` → StoreKit 2 / Play Billing (mobile, `--features native-store`).
+- `appl_…` / `goog_…` → StoreKit 2 / Play Billing (mobile only).
 
 **Show paywall** renders the dashboard paywall from `Offering.paywall` in the
 webview and buys the selected package, the same config a native SDK would draw.
@@ -348,7 +348,7 @@ Tauri mobile app.
 | Store account | **none** with a `test_` key (simulated Test Store); desktop + CI included |
 
 **Native store bridge (`tauri-plugin-revenuecat`)**: only for real StoreKit 2 /
-Play Billing purchases (`appl_`/`goog_` keys, `--features native-store`). The OS
+Play Billing purchases (`appl_`/`goog_` keys, mobile). The OS
 floors here match Apple's and Google's own:
 
 | Platform | Floor | Why |
