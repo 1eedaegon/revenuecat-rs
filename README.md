@@ -219,6 +219,8 @@ is `tauri://localhost` on macOS/Linux but `http://tauri.localhost` on Windows.
 cargo run -p revenuecat-tauri-demo
 ```
 
+![Configure the SDK — enter a key to pick the backend](docs/setup-ui.png)
+
 Enter an API key on the setup screen to pick the backend:
 
 - **empty** → embedded mock backend, fully offline;
@@ -237,7 +239,7 @@ cargo run -p revenuecat-rs --example test_store_flow
 ## Testing
 
 ```sh
-cargo test --workspace          # unit + integration + Tauri IPC (110+ tests)
+cargo test --workspace          # unit + integration + Tauri IPC (115+ tests)
 cargo clippy --workspace --all-targets   # unwrap is denied in lib code
 cargo deny check                # advisories / licenses
 ```
@@ -293,7 +295,7 @@ purchase end to end against the real Test Store backend.
 |---|---|
 | `GET /v1/subscribers/{id}` | ✅ custom ETag caching |
 | `POST /v1/receipts` | ✅ android-shape body, 429 retry w/ backoff |
-| `GET /v1/subscribers/{id}/offerings` | ✅ |
+| `GET /v1/subscribers/{id}/offerings` | ✅ packages + dashboard paywall |
 | `GET /rcbilling/v1/subscribers/{id}/products` | ✅ Test Store products; device-verified on iOS + Android |
 | `POST /v1/subscribers/identify` | ✅ created = HTTP 201 |
 | `POST /v1/subscribers/{id}/attributes` | ✅ incl. `attribute_errors` |
@@ -302,7 +304,7 @@ purchase end to end against the real Test Store backend.
 | `POST /v1/subscribers/redeem_purchase` | ✅ typed results + deep-link parser |
 | `POST /v1/diagnostics` | ✅ opt-in; Android entry shape and retry semantics |
 | Native stores (StoreKit 2 / Play Billing) | 🔶 `tauri-plugin-revenuecat` shims code-complete; device E2E pending |
-| Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 config fully typed; v2 tree exposed as raw JSON; you render (demo does) |
+| Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 templates fully typed; v2 components as raw JSON — render in your webview (the demo does) |
 | Customer center UI | ❌ out of scope |
 
 Speaks the documented surface plus the endpoints the official MIT-licensed
