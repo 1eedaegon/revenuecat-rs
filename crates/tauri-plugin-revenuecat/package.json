@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/1eedaegon/revenuecat-rs"
+    "url": "git+https://github.com/1eedaegon/revenuecat-rs.git"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0"
