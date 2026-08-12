@@ -16,12 +16,12 @@ SDK, from raw REST calls, and how breaking changes are handled here.
 
 ## Versioning policy
 
-`revenuecat-rs` is pre-1.0. Per Cargo SemVer, breaking changes may land in a
-**minor** bump (`0.x`), so pin a minor range and read the release notes before
-upgrading:
+`revenuecat-rs` follows SemVer from 1.0: breaking changes bump **major**,
+additive changes bump **minor**, fixes bump **patch**. Pin a major range and
+read the release notes before a major upgrade:
 
 ```toml
-revenuecat-rs = "0.5"   # 0.5.x, review notes before moving to 0.6
+revenuecat-rs = "1"   # 1.x, additive-only until 2.0
 ```
 
 Breaking changes are called out in the GitHub release for each tag. The public
