@@ -12,7 +12,7 @@ CI. Real stores plug in through one trait.
 
 ```toml
 [dependencies]
-revenuecat-rs = "0.4"   # imported in code as `revenuecat`
+revenuecat-rs = "0.5"   # imported in code as `revenuecat`
 ```
 
 ## Usage

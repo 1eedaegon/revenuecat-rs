@@ -21,7 +21,7 @@ SDK, from raw REST calls, and how breaking changes are handled here.
 upgrading:
 
 ```toml
-revenuecat-rs = "0.4"   # 0.4.x, review notes before moving to 0.5
+revenuecat-rs = "0.5"   # 0.5.x, review notes before moving to 0.6
 ```
 
 Breaking changes are called out in the GitHub release for each tag. The public
