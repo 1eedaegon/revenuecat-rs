@@ -10,7 +10,7 @@ env:
 
 jobs:
   publish:
-    name: Verify and publish revenuecat
+    name: Verify and publish (SDK + Tauri plugin)
     runs-on: [self-hosted, macOS, ARM64]
     environment: crates-io
     steps:
@@ -34,5 +34,10 @@ jobs:
       - name: Test before publishing
         run: cargo test -p revenuecat-rs -p revenuecat-mock
 
-      - name: Publish
+      # Publish the SDK first; `cargo publish` waits for it to land in the
+      # index before the plugin (which depends on it) verify-builds.
+      - name: Publish SDK (revenuecat-rs)
         run: cargo publish -p revenuecat-rs --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+
+      - name: Publish Tauri plugin (tauri-plugin-revenuecat)
+        run: cargo publish -p tauri-plugin-revenuecat --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"

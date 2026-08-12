@@ -26,7 +26,9 @@ todo = "deny"
 dbg_macro = "deny"
 
 [workspace.dependencies]
-revenuecat-rs = { path = "crates/revenuecat" }
+# `version` lets publishable crates (tauri-plugin-revenuecat) depend on the
+# released revenuecat-rs from crates.io while using the local path in-workspace.
+revenuecat-rs = { path = "crates/revenuecat", version = "0.4" }
 revenuecat-mock = { path = "crates/revenuecat-mock" }
 
 async-trait = "0.1"
