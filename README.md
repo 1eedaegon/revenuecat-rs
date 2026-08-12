@@ -329,7 +329,6 @@ purchase end to end against the real Test Store backend.
 | Trusted Entitlements (`X-Signature`, Ed25519) | ✅ root → intermediate → payload; nonce + params-hash; 3 modes |
 | `POST /v1/subscribers/redeem_purchase` | ✅ typed results + deep-link parser |
 | `POST /v1/diagnostics` | ✅ opt-in; Android entry shape and retry semantics |
-| Native stores (StoreKit 2 / Play Billing) | 🔶 `tauri-plugin-revenuecat` shims code-complete; device E2E pending |
 | Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 templates fully typed; v2 components as raw JSON; render in your webview (the demo does) |
 
 Speaks the documented surface plus the endpoints the official MIT-licensed
