@@ -23,6 +23,7 @@
 //! Status: the Rust side and native shims are code-complete; end-to-end
 //! purchases still need store accounts + devices to verify (see README).
 
+mod commands;
 #[cfg(mobile)]
 mod mobile;
 mod models;
@@ -31,9 +32,9 @@ use std::sync::Arc;
 
 use revenuecat::StoreBilling;
 use tauri::plugin::{Builder, TauriPlugin};
-#[cfg(mobile)]
-use tauri::Manager;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
+
+pub use commands::{ConfigureOptions, LoginResult, SessionInfo};
 
 pub use models::{PluginProduct, PluginTransaction};
 
@@ -48,17 +49,30 @@ struct RevenuecatExt<R: Runtime>(tauri::plugin::PluginHandle<R>);
 /// is a no-op on desktop.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("revenuecat")
-        .setup(|_app, _api| {
+        .invoke_handler(tauri::generate_handler![
+            commands::configure,
+            commands::session_info,
+            commands::get_offerings,
+            commands::get_customer_info,
+            commands::purchase_package,
+            commands::restore,
+            commands::log_in,
+            commands::log_out,
+            commands::set_email,
+        ])
+        .setup(|app, _api| {
+            // The configured SDK lives here; `configure` populates it.
+            app.manage(commands::Sdk::default());
             #[cfg(target_os = "android")]
             {
                 let handle =
                     _api.register_android_plugin("app.tauri.revenuecat", "RevenueCatPlugin")?;
-                _app.manage(RevenuecatExt(handle));
+                app.manage(RevenuecatExt(handle));
             }
             #[cfg(target_os = "ios")]
             {
                 let handle = _api.register_ios_plugin(init_plugin_revenuecat)?;
-                _app.manage(RevenuecatExt(handle));
+                app.manage(RevenuecatExt(handle));
             }
             Ok(())
         })

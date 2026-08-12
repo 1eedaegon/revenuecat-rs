@@ -1,8 +1,18 @@
 "$schema" = "schemas/schema.json"
 
 [default]
-description = "Allows the app to query products, purchase, restore, and finish transactions through the platform store."
+description = "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store."
 permissions = [
+    "allow-configure",
+    "allow-session-info",
+    "allow-get-offerings",
+    "allow-get-customer-info",
+    "allow-purchase-package",
+    "allow-restore",
+    "allow-log-in",
+    "allow-log-out",
+    "allow-set-email",
+    # Native store bridge (internal; invoked over the mobile plugin channel).
     "allow-query-products",
     "allow-purchase",
     "allow-query-purchases",

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-get-customer-info"
+description = "Enables the get_customer_info command without any pre-configured scope."
+commands.allow = ["get_customer_info"]
+
+[[permission]]
+identifier = "deny-get-customer-info"
+description = "Denies the get_customer_info command without any pre-configured scope."
+commands.deny = ["get_customer_info"]

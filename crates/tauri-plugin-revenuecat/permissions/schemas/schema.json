@@ -295,6 +295,18 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the configure command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-configure",
+          "markdownDescription": "Enables the configure command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the configure command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-configure",
+          "markdownDescription": "Denies the configure command without any pre-configured scope."
+        },
+        {
           "description": "Enables the finish_transaction command without any pre-configured scope.",
           "type": "string",
           "const": "allow-finish-transaction",
@@ -307,6 +319,54 @@
           "markdownDescription": "Denies the finish_transaction command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_customer_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-customer-info",
+          "markdownDescription": "Enables the get_customer_info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_customer_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-customer-info",
+          "markdownDescription": "Denies the get_customer_info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_offerings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-offerings",
+          "markdownDescription": "Enables the get_offerings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_offerings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-offerings",
+          "markdownDescription": "Denies the get_offerings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the log_in command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-log-in",
+          "markdownDescription": "Enables the log_in command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the log_in command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-log-in",
+          "markdownDescription": "Denies the log_in command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the log_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-log-out",
+          "markdownDescription": "Enables the log_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the log_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-log-out",
+          "markdownDescription": "Denies the log_out command without any pre-configured scope."
+        },
+        {
           "description": "Enables the purchase command without any pre-configured scope.",
           "type": "string",
           "const": "allow-purchase",
@@ -317,6 +377,18 @@
           "type": "string",
           "const": "deny-purchase",
           "markdownDescription": "Denies the purchase command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the purchase_package command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-purchase-package",
+          "markdownDescription": "Enables the purchase_package command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the purchase_package command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-purchase-package",
+          "markdownDescription": "Denies the purchase_package command without any pre-configured scope."
         },
         {
           "description": "Enables the query_products command without any pre-configured scope.",
@@ -343,10 +415,46 @@
           "markdownDescription": "Denies the query_purchases command without any pre-configured scope."
         },
         {
-          "description": "Allows the app to query products, purchase, restore, and finish transactions through the platform store.\n#### This default permission set includes:\n\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`",
+          "description": "Enables the restore command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restore",
+          "markdownDescription": "Enables the restore command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restore command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restore",
+          "markdownDescription": "Denies the restore command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the session_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-session-info",
+          "markdownDescription": "Enables the session_info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the session_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-session-info",
+          "markdownDescription": "Denies the session_info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_email command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-email",
+          "markdownDescription": "Enables the set_email command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_email command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-email",
+          "markdownDescription": "Denies the set_email command without any pre-configured scope."
+        },
+        {
+          "description": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows the app to query products, purchase, restore, and finish transactions through the platform store.\n#### This default permission set includes:\n\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`"
+          "markdownDescription": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`"
         }
       ]
     }
