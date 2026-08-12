@@ -332,4 +332,73 @@ mod tests {
         // Absolute URLs pass through untouched.
         assert_eq!(paywall.image_url("https://x/y.png"), "https://x/y.png");
     }
+
+    #[test]
+    fn web_images_prefers_webp_over_legacy() {
+        // A paywall carrying both the legacy JPG set and a WebP set: a webview
+        // should get WebP (the legacy set may be HEIC/JPG that browsers choke on).
+        let json = r#"{
+            "template_name": "2",
+            "config": {
+                "images": { "header": "header.heic" },
+                "images_webp": { "header": "header.webp", "background": "bg.webp" }
+            }
+        }"#;
+        let paywall: Paywall = serde_json::from_str(json).unwrap();
+        assert_eq!(paywall.web_images().header.as_deref(), Some("header.webp"));
+
+        // With no WebP set, it falls back to the legacy images.
+        let legacy_only = r#"{
+            "template_name": "2",
+            "config": { "images": { "header": "header.heic" } }
+        }"#;
+        let paywall: Paywall = serde_json::from_str(legacy_only).unwrap();
+        assert_eq!(paywall.web_images().header.as_deref(), Some("header.heic"));
+    }
+
+    #[test]
+    fn strings_for_unknown_locale_without_default_falls_back_to_first() {
+        // No default_locale set; an unknown locale should still resolve to the
+        // one available locale rather than losing the copy.
+        let json = r#"{
+            "template_name": "2",
+            "config": {},
+            "localized_strings": {
+                "de_DE": { "title": "Freischalten" }
+            }
+        }"#;
+        let paywall: Paywall = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            paywall.strings_for("fr_FR").title.as_deref(),
+            Some("Freischalten")
+        );
+    }
+
+    #[test]
+    fn parses_paywall_components_v2() {
+        // v2 paywalls keep the (large, evolving) component tree as raw JSON;
+        // the envelope a renderer needs is typed, and the tree round-trips.
+        let json = r#"{
+            "template_name": "components",
+            "revision": 3,
+            "default_locale": "en_US",
+            "asset_base_url": "https://assets.pawwalls.com",
+            "components_config": {
+                "base": { "stack": { "components": [{ "type": "text" }] } }
+            },
+            "components_localizations": { "en_US": { "CTA-1": "Continue" } }
+        }"#;
+        let components: PaywallComponents = serde_json::from_str(json).unwrap();
+        assert_eq!(components.template_name.as_deref(), Some("components"));
+        assert_eq!(components.revision, 3);
+        // The raw tree is preserved verbatim for the frontend to interpret.
+        assert_eq!(
+            components.components_config["base"]["stack"]["components"][0]["type"],
+            "text"
+        );
+        assert_eq!(
+            components.components_localizations["en_US"]["CTA-1"],
+            "Continue"
+        );
+    }
 }
