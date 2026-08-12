@@ -206,6 +206,14 @@ The integration suite runs the real SDK stack against `revenuecat-mock` and
 asserts exact wire behavior — request paths, headers, receipt-body fields,
 ETag 304 replay, and full Ed25519 verification.
 
+**Device-verified:** the Tauri demo has been run on a physical **iPhone 16
+(iOS)** and **Galaxy S23 (Android)**, each completing a purchase end to end
+against the real RevenueCat **Test Store** backend (`test_` SDK key). The
+crate itself is platform-agnostic Rust HTTP; the device runs confirm it works
+in the mobile runtime (TLS via bundled webpki roots, no platform-verifier JNI
+dependency). Native-store (StoreKit 2 / Play Billing) sandbox purchases still
+need paid store accounts.
+
 ## Protocol coverage
 
 | Endpoint | Status |
@@ -213,7 +221,7 @@ ETag 304 replay, and full Ed25519 verification.
 | `GET /v1/subscribers/{id}` | ✅ custom ETag caching |
 | `POST /v1/receipts` | ✅ android-shape body, 429 retry w/ backoff |
 | `GET /v1/subscribers/{id}/offerings` | ✅ |
-| `GET /rcbilling/v1/subscribers/{id}/products` | ✅ Test Store products |
+| `GET /rcbilling/v1/subscribers/{id}/products` | ✅ Test Store products; device-verified on iOS + Android |
 | `POST /v1/subscribers/identify` | ✅ created = HTTP 201 |
 | `POST /v1/subscribers/{id}/attributes` | ✅ incl. `attribute_errors` |
 | `GET /v1/subscribers/{id}/virtual_currencies` | ✅ cache + invalidation |
