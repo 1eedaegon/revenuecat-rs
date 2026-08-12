@@ -30,10 +30,10 @@ function errorText(error) {
 async function call(cmd, args = {}) {
   try {
     const result = await invoke(cmd, args);
-    log(`${cmd} ✓`);
+    log(`${cmd} ok`);
     return result;
   } catch (error) {
-    log(`${cmd} ✗ ${errorText(error)}`, true);
+    log(`${cmd} err ${errorText(error)}`, true);
     throw error;
   }
 }
@@ -226,11 +226,6 @@ el("restore-btn").addEventListener("click", async () => {
 
 // -- Paywall (rendered from Offering.paywall, a dashboard v1 template) -------
 
-const RC_ICONS = {
-  lock: "🔒", bell: "🔔", chat: "💬", star: "⭐", check: "✓",
-  heart: "❤️", crown: "👑", bolt: "⚡",
-};
-
 function assetUrl(paywall, name) {
   if (!name) return null;
   if (name.startsWith("http")) return name;
@@ -294,8 +289,7 @@ function renderPaywall(offering) {
   for (const f of s.features) {
     const li = document.createElement("li");
     const icon = document.createElement("span");
-    icon.className = "pw-feature-icon";
-    icon.textContent = RC_ICONS[f.icon_id] ?? "✓";
+    icon.className = "pw-feature-icon"; // checkmark drawn in CSS
     const text = document.createElement("span");
     text.textContent = f.content ? `${f.title} — ${f.content}` : f.title;
     li.append(icon, text);
