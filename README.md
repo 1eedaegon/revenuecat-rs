@@ -82,7 +82,7 @@ title, subtitle, feature list, selectable package cards, and a CTA that buys
 the selected package, all in the dashboard's own colors. See
 `demo/tauri-app/ui/main.js` (`renderPaywall`) for a complete v1 renderer.
 
-![Paywall rendered from Offering.paywall](docs/paywall-ui.png)
+<img src="docs/paywall-ui.png" alt="Paywall rendered from Offering.paywall" width="320" />
 
 ### Customer info and entitlements
 
