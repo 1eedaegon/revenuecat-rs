@@ -12,7 +12,7 @@ CI. Real stores plug in through one trait.
 
 ```toml
 [dependencies]
-revenuecat-rs = "0.3"   # imported in code as `revenuecat`
+revenuecat-rs = "0.4"   # imported in code as `revenuecat`
 ```
 
 ## Usage
@@ -46,6 +46,43 @@ println!("{} — {}", monthly.store_product.title, monthly.store_product.price.f
 let result = purchases.purchase_package(monthly).await?;
 assert!(result.customer_info.entitlements.is_active("pro"));
 ```
+
+### Paywalls
+
+The paywall you design in the RevenueCat dashboard rides along on each
+offering, so you draw it yourself instead of embedding a native paywall UI.
+`Offering.paywall` is the v1 template config (`Paywall`); `paywall_components`
+is the v2 component tree. Both are `Serialize`, so a Tauri command can hand the
+whole thing to a webview to render as HTML/CSS.
+
+```rust
+let offerings = purchases.get_offerings().await?;
+if let Some(paywall) = offerings.current().and_then(|o| o.paywall.as_ref()) {
+    // Copy resolved for a locale, merged over the config defaults.
+    let strings = paywall.strings_for("en_US");
+    println!("{}", strings.title.as_deref().unwrap_or_default());
+
+    // Dashboard colors are hex strings; images honor `asset_base_url`.
+    let cta = paywall.config.colors.light.call_to_action_background.as_deref();
+    if let Some(header) = paywall.web_images().header.as_deref() {
+        println!("header: {}", paywall.image_url(header));   // webp preferred
+    }
+
+    // The package ids to show, in dashboard order — join to the offering.
+    for id in &paywall.config.packages {
+        if let Some(pkg) = offerings.current().and_then(|o| o.package(id)) {
+            println!("{} — {}", pkg.store_product.title, pkg.store_product.price.formatted());
+        }
+    }
+}
+```
+
+The demo renders this config as a bottom sheet / centered card — header,
+title, subtitle, feature list, selectable package cards, and a CTA that buys
+the selected package, all in the dashboard's own colors. See
+`demo/tauri-app/ui/main.js` (`renderPaywall`) for a complete v1 renderer.
+
+![Paywall rendered from Offering.paywall](docs/paywall-ui.png)
 
 ### Customer info and entitlements
 
@@ -188,6 +225,9 @@ Enter an API key on the setup screen to pick the backend:
 - `test_…` → real RevenueCat backend, simulated Test Store (no store account);
 - `appl_…` / `goog_…` → StoreKit 2 / Play Billing (mobile, `--features native-store`).
 
+**Show paywall** renders the dashboard paywall from `Offering.paywall` in the
+webview and buys the selected package — the same config a native SDK would draw.
+
 There's also a CLI walkthrough of the same flow:
 
 ```sh
@@ -229,7 +269,8 @@ need paid store accounts.
 | `POST /v1/subscribers/redeem_purchase` | ✅ typed results + deep-link parser |
 | `POST /v1/diagnostics` | ✅ opt-in; Android entry shape and retry semantics |
 | Native stores (StoreKit 2 / Play Billing) | 🔶 `tauri-plugin-revenuecat` shims code-complete; device E2E pending |
-| Paywalls / customer center UI | ❌ out of scope |
+| Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 config fully typed; v2 tree exposed as raw JSON; you render (demo does) |
+| Customer center UI | ❌ out of scope |
 
 Not affiliated with RevenueCat. Only the documented surface plus the endpoints
 the official MIT-licensed clients use is spoken.
