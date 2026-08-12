@@ -61,6 +61,7 @@
       <p class="panel-note">Packages resolved from <code>/v1/subscribers/&hellip;/offerings</code> joined with store products.</p>
       <ul id="packages" class="packages"></ul>
       <div class="row-actions">
+        <button id="paywall-btn" class="ghost" hidden>Show paywall</button>
         <button id="restore-btn" class="ghost">Restore purchases</button>
       </div>
     </section>
@@ -82,6 +83,20 @@
     <h2 id="wire-heading">Wire log</h2>
     <ol id="log" class="log" aria-live="polite"></ol>
   </footer>
+
+  <!-- Dashboard-configured paywall, rendered from Offering.paywall. -->
+  <dialog id="paywall-dialog" class="paywall-dialog">
+    <div id="paywall" class="paywall">
+      <button id="paywall-close" class="paywall-close" aria-label="Close">✕</button>
+      <div id="paywall-header" class="paywall-header"></div>
+      <h2 id="paywall-title" class="paywall-title"></h2>
+      <p id="paywall-subtitle" class="paywall-subtitle"></p>
+      <ul id="paywall-features" class="paywall-features"></ul>
+      <div id="paywall-packages" class="paywall-packages"></div>
+      <button id="paywall-cta" class="paywall-cta"></button>
+      <div id="paywall-links" class="paywall-links"></div>
+    </div>
+  </dialog>
 
   <dialog id="login-dialog">
     <form method="dialog" id="login-form">

@@ -302,6 +302,182 @@ dialog menu {
   padding: 0;
 }
 
+/* ---- paywall (renders the dashboard template, in the dashboard's colors) ----
+   Colors come from Offering.paywall via CSS vars set in main.js, so this sheet
+   intentionally leaves the paper theme and shows the merchant's own brand. */
+
+.paywall-dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+  /* Explicit positioning (not margin:auto) so a modal dialog centers the same
+     way in WebKit — Tauri's macOS/iOS webview — and Blink. Bottom sheet on
+     phones; centered card on desktop. The side inset keeps the sheet (and the
+     close button's focus ring) off the screen edge. */
+  width: min(26rem, calc(100% - 2 * var(--space-2)));
+  max-height: 92vh;
+  position: fixed;
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: var(--space-2);
+  transform: translateX(-50%);
+  margin: 0;
+  border-radius: 1.1rem;
+  overflow: visible;
+}
+@media (min-width: 641px) {
+  .paywall-dialog {
+    top: 50%;
+    bottom: auto;
+    transform: translate(-50%, -50%);
+  }
+}
+.paywall-dialog::backdrop { background: oklch(20% 0.02 60 / 0.55); }
+
+.paywall {
+  --pw-bg: #ffffff;
+  --pw-text: #1a1a1a;
+  --pw-text-2: #666666;
+  --pw-cta-bg: #e0554d;
+  --pw-cta-fg: #ffffff;
+  --pw-accent: #e0554d;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3)
+           calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: var(--pw-bg);
+  color: var(--pw-text);
+  border-radius: inherit;
+  max-height: inherit;
+  overflow-y: auto;
+  font-family: var(--font-sans);
+}
+
+.paywall-close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--pw-text) 8%, transparent);
+  color: var(--pw-text);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.paywall-close:hover { background: color-mix(in oklch, var(--pw-text) 16%, transparent); }
+
+.paywall-header {
+  height: 8rem;
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-3)) 0;
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background-size: cover;
+  background-position: center;
+}
+.paywall-header.empty {
+  height: 3.5rem;
+  background: linear-gradient(135deg,
+    color-mix(in oklch, var(--pw-accent) 85%, white),
+    var(--pw-accent));
+}
+
+.paywall-title {
+  margin: var(--space-1) 0 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.paywall-subtitle {
+  margin: 0;
+  color: var(--pw-text-2);
+  font-size: 0.95rem;
+}
+
+.paywall-features {
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.paywall-features li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.92rem;
+}
+.pw-feature-icon {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--pw-accent) 15%, transparent);
+  font-size: 0.9rem;
+}
+
+.paywall-packages { display: grid; gap: var(--space-2); margin: var(--space-1) 0; }
+
+.pw-package {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  background: color-mix(in oklch, var(--pw-text) 4%, transparent);
+  color: var(--pw-text);
+  border: 2px solid color-mix(in oklch, var(--pw-text) 12%, transparent);
+  border-radius: 0.8rem;
+}
+.pw-package:hover { border-color: color-mix(in oklch, var(--pw-accent) 50%, transparent); }
+.pw-package.selected {
+  border-color: var(--pw-accent);
+  background: color-mix(in oklch, var(--pw-accent) 10%, transparent);
+}
+.pw-pkg-name { font-weight: 600; }
+.pw-pkg-price { font-family: var(--font-mono); font-weight: 600; }
+
+.paywall-cta {
+  margin-top: var(--space-1);
+  padding: 0.95rem 1rem;
+  border: none;
+  border-radius: 0.8rem;
+  background: var(--pw-cta-bg);
+  color: var(--pw-cta-fg);
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+.paywall-cta:hover { filter: brightness(1.06); }
+.paywall-cta[disabled] { opacity: 0.6; cursor: wait; }
+
+.paywall-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+.paywall-links a {
+  color: var(--pw-text-2);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+.paywall-links a:hover { text-decoration: underline; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; }
 }

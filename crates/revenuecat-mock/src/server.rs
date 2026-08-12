@@ -234,6 +234,9 @@ async fn get_offerings(
                     "identifier": p.identifier,
                     "platform_product_identifier": p.product_id,
                 })).collect::<Vec<_>>(),
+                // A dashboard-configured v1 template paywall, so demos and
+                // tests can render one from the offering.
+                "paywall": sample_paywall(offering),
             })
         })
         .collect();
@@ -243,6 +246,59 @@ async fn get_offerings(
     });
     let path = format!("/v1/subscribers/{app_user_id}/offerings");
     etag_response_for(&state, &path, &headers, body)
+}
+
+/// A v1 template paywall covering the offering's subscription packages, in
+/// the exact `paywall` wire shape (template, config colors/features/packages,
+/// localized strings).
+fn sample_paywall(offering: &crate::state::MockOffering) -> Value {
+    let package_ids: Vec<String> = offering
+        .packages
+        .iter()
+        .map(|p| p.identifier.clone())
+        .collect();
+    let default_package = package_ids
+        .iter()
+        .find(|id| id.contains("annual"))
+        .or_else(|| package_ids.first())
+        .cloned();
+    json!({
+        "template_name": "2",
+        "revision": 1,
+        "default_locale": "en_US",
+        "asset_base_url": "https://assets.pawwalls.com",
+        "config": {
+            "packages": package_ids,
+            "default_package": default_package,
+            "images": {},
+            "colors": {
+                "light": {
+                    "background": "#fbf7f2",
+                    "text_1": "#2b1d16",
+                    "text_2": "#6b5b52",
+                    "call_to_action_background": "#e0554d",
+                    "call_to_action_foreground": "#ffffff",
+                    "accent_1": "#e0554d"
+                }
+            },
+            "display_restore_purchases": true,
+            "tos_url": "https://example.com/tos",
+            "privacy_url": "https://example.com/privacy"
+        },
+        "localized_strings": {
+            "en_US": {
+                "title": "Unlock Pro",
+                "subtitle": "Everything, unlocked — cancel anytime.",
+                "call_to_action": "Continue",
+                "offer_details": "{{ total_price_and_per_month }}",
+                "features": [
+                    { "title": "Unlimited access", "icon_id": "lock" },
+                    { "title": "Priority support", "icon_id": "chat" },
+                    { "title": "No ads", "icon_id": "bell" }
+                ]
+            }
+        }
+    })
 }
 
 async fn get_products(

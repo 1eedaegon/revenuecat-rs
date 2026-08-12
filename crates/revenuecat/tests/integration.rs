@@ -422,3 +422,43 @@ async fn a_304_without_local_cache_is_retried_once_with_empty_etag() {
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[1].headers["x-revenuecat-etag"], "");
 }
+
+#[tokio::test]
+async fn offerings_expose_the_dashboard_paywall() {
+    // Arrange
+    let server = spawn_mock().await;
+    let purchases = configure(&server, Some("paywall-user"));
+
+    // Act
+    let offerings = purchases.get_offerings().await.unwrap();
+    let current = offerings.current().expect("current offering");
+    let paywall = current
+        .paywall
+        .as_ref()
+        .expect("offering carries a paywall");
+
+    // Assert: the v1 paywall config + localized copy round-trips.
+    assert_eq!(paywall.template_name, "2");
+    assert!(paywall.config.display_restore_purchases);
+    assert!(paywall.config.packages.contains(&"$rc_monthly".to_owned()));
+    let en = paywall.strings_for("en_US");
+    assert_eq!(en.title.as_deref(), Some("Unlock Pro"));
+    assert_eq!(en.features.len(), 3);
+    assert_eq!(
+        paywall
+            .config
+            .colors
+            .light
+            .call_to_action_background
+            .as_deref(),
+        Some("#e0554d")
+    );
+
+    // Every paywall package id resolves to a package in the offering.
+    for id in &paywall.config.packages {
+        assert!(
+            current.package(id).is_some(),
+            "paywall package {id} must resolve"
+        );
+    }
+}

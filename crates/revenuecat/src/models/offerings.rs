@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use super::paywall::{Paywall, PaywallComponents};
 use super::store_product::StoreProduct;
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,12 @@ pub struct OfferingResponse {
     pub metadata: Option<serde_json::Value>,
     #[serde(default)]
     pub packages: Vec<PackageResponse>,
+    /// v1 template paywall configured in the dashboard.
+    #[serde(default)]
+    pub paywall: Option<Paywall>,
+    /// v2 component-based paywall.
+    #[serde(default)]
+    pub paywall_components: Option<PaywallComponents>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -116,6 +123,11 @@ pub struct Offering {
     pub server_description: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub packages: Vec<Package>,
+    /// Dashboard-configured v1 template paywall, if any. Render it in your
+    /// UI (in Tauri, in the webview) from this config.
+    pub paywall: Option<Paywall>,
+    /// v2 component-based paywall, if any.
+    pub paywall_components: Option<PaywallComponents>,
 }
 
 impl Offering {
@@ -200,6 +212,8 @@ impl Offerings {
                             server_description: offering.description.clone(),
                             metadata: offering.metadata.clone(),
                             packages,
+                            paywall: offering.paywall.clone(),
+                            paywall_components: offering.paywall_components.clone(),
                         },
                     ))
                 }

@@ -1,5 +1,6 @@
 mod customer_info;
 mod offerings;
+mod paywall;
 mod redemption;
 mod store_product;
 mod transaction;
@@ -12,6 +13,10 @@ pub use customer_info::{
 pub use offerings::{
     Offering, OfferingResponse, Offerings, OfferingsResponse, Package, PackageResponse,
     PackageType, PlacementsResponse, PresentedOfferingContext, TargetingResponse,
+};
+pub use paywall::{
+    Paywall, PaywallColors, PaywallColorsByMode, PaywallComponents, PaywallConfig, PaywallFeature,
+    PaywallImages, PaywallLocalizedStrings,
 };
 pub use redemption::{RedeemResult, WebPurchaseRedemption};
 pub use store_product::{

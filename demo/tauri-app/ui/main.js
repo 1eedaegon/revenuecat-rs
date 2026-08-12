@@ -98,11 +98,16 @@ function packageLabel(type) {
   return typeof type === "string" ? type : (type.Custom ?? "Package");
 }
 
+// The current offering, kept so the paywall can render from its config.
+let currentOffering = null;
+
 function renderOfferings(offerings) {
   packagesEl.replaceChildren();
   const current = offerings.current_offering_id
     ? offerings.all[offerings.current_offering_id]
     : null;
+  currentOffering = current;
+  el("paywall-btn").hidden = !(current && current.paywall);
   if (!current) {
     const empty = document.createElement("li");
     empty.className = "empty";
@@ -217,6 +222,171 @@ async function refreshAll() {
 
 el("restore-btn").addEventListener("click", async () => {
   renderCustomer(await call("restore"));
+});
+
+// -- Paywall (rendered from Offering.paywall, a dashboard v1 template) -------
+
+const RC_ICONS = {
+  lock: "🔒", bell: "🔔", chat: "💬", star: "⭐", check: "✓",
+  heart: "❤️", crown: "👑", bolt: "⚡",
+};
+
+function assetUrl(paywall, name) {
+  if (!name) return null;
+  if (name.startsWith("http")) return name;
+  const base = (paywall.asset_base_url || "").replace(/\/$/, "");
+  return base ? `${base}/${name.replace(/^\//, "")}` : name;
+}
+
+function paywallStrings(paywall, locale = "en_US") {
+  const loc =
+    paywall.localized_strings[locale] ||
+    paywall.localized_strings[paywall.default_locale] ||
+    Object.values(paywall.localized_strings)[0] ||
+    {};
+  const cfg = paywall.config;
+  return {
+    title: loc.title ?? cfg.title ?? "",
+    subtitle: loc.subtitle ?? cfg.subtitle ?? "",
+    call_to_action: loc.call_to_action ?? cfg.call_to_action ?? "Continue",
+    offer_details: loc.offer_details ?? cfg.offer_details ?? "",
+    features: (loc.features && loc.features.length ? loc.features : cfg.features) ?? [],
+  };
+}
+
+function fillPriceVars(template, pkg) {
+  // Minimal {{ variable }} substitution for the demo.
+  const price = pkg ? formatPrice(pkg.store_product.price) : "";
+  const period = pkg?.store_product.subscription_period ?? "";
+  return template
+    .replace(/{{\s*total_price_and_per_month\s*}}/g, price)
+    .replace(/{{\s*price\s*}}/g, price)
+    .replace(/{{\s*period\s*}}/g, period)
+    .replace(/{{[^}]*}}/g, price);
+}
+
+function renderPaywall(offering) {
+  const paywall = offering.paywall;
+  if (!paywall) return;
+  const s = paywallStrings(paywall);
+  const colors = paywall.config.colors.light || {};
+  const paywallEl = el("paywall");
+
+  // Apply the dashboard color scheme via CSS variables.
+  paywallEl.style.setProperty("--pw-bg", colors.background || "#ffffff");
+  paywallEl.style.setProperty("--pw-text", colors.text_1 || "#000000");
+  paywallEl.style.setProperty("--pw-text-2", colors.text_2 || colors.text_1 || "#666");
+  paywallEl.style.setProperty("--pw-cta-bg", colors.call_to_action_background || "#e0554d");
+  paywallEl.style.setProperty("--pw-cta-fg", colors.call_to_action_foreground || "#ffffff");
+  paywallEl.style.setProperty("--pw-accent", colors.accent_1 || colors.call_to_action_background || "#e0554d");
+
+  // Header image (webp/jpg), if configured.
+  const header = el("paywall-header");
+  const img = assetUrl(paywall, paywall.config.images_webp?.header || paywall.config.images?.header);
+  header.style.backgroundImage = img ? `url("${img}")` : "none";
+  header.classList.toggle("empty", !img);
+
+  el("paywall-title").textContent = s.title;
+  el("paywall-subtitle").textContent = s.subtitle;
+
+  const features = el("paywall-features");
+  features.replaceChildren();
+  for (const f of s.features) {
+    const li = document.createElement("li");
+    const icon = document.createElement("span");
+    icon.className = "pw-feature-icon";
+    icon.textContent = RC_ICONS[f.icon_id] ?? "✓";
+    const text = document.createElement("span");
+    text.textContent = f.content ? `${f.title} — ${f.content}` : f.title;
+    li.append(icon, text);
+    features.append(li);
+  }
+
+  // Package cards, joined from the paywall's package ids to the offering.
+  const packagesBox = el("paywall-packages");
+  packagesBox.replaceChildren();
+  const ids = paywall.config.packages.length
+    ? paywall.config.packages
+    : offering.packages.map((p) => p.identifier);
+  let selected =
+    ids.find((id) => id === paywall.config.default_package) ?? ids[0];
+
+  const cta = el("paywall-cta");
+  const updateCta = () => {
+    const pkg = offering.packages.find((p) => p.identifier === selected);
+    cta.textContent = s.offer_details
+      ? `${s.call_to_action} · ${fillPriceVars(s.offer_details, pkg)}`
+      : s.call_to_action;
+  };
+
+  for (const id of ids) {
+    const pkg = offering.packages.find((p) => p.identifier === id);
+    if (!pkg) continue;
+    const card = document.createElement("button");
+    card.className = "pw-package" + (id === selected ? " selected" : "");
+    card.dataset.id = id;
+    const name = document.createElement("span");
+    name.className = "pw-pkg-name";
+    name.textContent = pkg.store_product.title;
+    const price = document.createElement("span");
+    price.className = "pw-pkg-price";
+    price.textContent = formatPrice(pkg.store_product.price);
+    card.append(name, price);
+    card.addEventListener("click", () => {
+      selected = id;
+      packagesBox.querySelectorAll(".pw-package").forEach((c) =>
+        c.classList.toggle("selected", c.dataset.id === id),
+      );
+      updateCta();
+    });
+    packagesBox.append(card);
+  }
+  updateCta();
+
+  cta.onclick = async () => {
+    cta.disabled = true;
+    try {
+      const result = await call("purchase", { packageId: selected });
+      renderCustomer(result.customer_info);
+      el("paywall-dialog").close();
+    } catch {
+      // error already logged in the wire log
+    } finally {
+      cta.disabled = false;
+    }
+  };
+
+  // Restore + legal links.
+  const links = el("paywall-links");
+  links.replaceChildren();
+  if (paywall.config.display_restore_purchases) {
+    const restore = document.createElement("a");
+    restore.textContent = "Restore purchases";
+    restore.href = "#";
+    restore.addEventListener("click", async (e) => {
+      e.preventDefault();
+      renderCustomer(await call("restore"));
+    });
+    links.append(restore);
+  }
+  for (const [label, url] of [["Terms", paywall.config.tos_url], ["Privacy", paywall.config.privacy_url]]) {
+    if (!url) continue;
+    const a = document.createElement("a");
+    a.textContent = label;
+    a.href = url;
+    a.target = "_blank";
+    links.append(a);
+  }
+}
+
+el("paywall-btn").addEventListener("click", () => {
+  if (!currentOffering?.paywall) return;
+  renderPaywall(currentOffering);
+  el("paywall-dialog").showModal();
+});
+el("paywall-close").addEventListener("click", () => el("paywall-dialog").close());
+el("paywall-dialog").addEventListener("click", (e) => {
+  if (e.target === el("paywall-dialog")) el("paywall-dialog").close();
 });
 
 const dialog = el("login-dialog");
