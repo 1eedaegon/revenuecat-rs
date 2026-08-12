@@ -4,7 +4,7 @@
 [purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT), down
 to the same wire formats.
 
-A `test_` (Test Store) key needs **no native store** — purchases are simulated
+A `test_` (Test Store) key needs **no native store**: purchases are simulated
 end to end, so the SDK, its tests, and the Tauri demo all run on desktop and
 CI. Real stores plug in through one trait.
 
@@ -22,7 +22,7 @@ revenuecat-rs = "0.4"   # imported in code as `revenuecat`
 ```rust
 use revenuecat::{Configuration, Purchases};
 
-// Test Store — real backend, no native store, no store account.
+// Test Store: real backend, no native store, no store account.
 let purchases = Purchases::configure(
     Configuration::builder("test_YOUR_KEY")
         .app_user_id("gon")          // omit for an anonymous $RCAnonymousID:…
@@ -40,7 +40,7 @@ let staging = Configuration::builder("test_KEY")
 ```rust
 let offerings = purchases.get_offerings().await?;
 let monthly = offerings.current().and_then(|o| o.monthly()).expect("package");
-println!("{} — {}", monthly.store_product.title, monthly.store_product.price.formatted());
+println!("{}: {}", monthly.store_product.title, monthly.store_product.price.formatted());
 
 // store flow -> POST /v1/receipts -> server-computed CustomerInfo
 let result = purchases.purchase_package(monthly).await?;
@@ -68,16 +68,16 @@ if let Some(paywall) = offerings.current().and_then(|o| o.paywall.as_ref()) {
         println!("header: {}", paywall.image_url(header));   // webp preferred
     }
 
-    // The package ids to show, in dashboard order — join to the offering.
+    // The package ids to show, in dashboard order, joined to the offering.
     for id in &paywall.config.packages {
         if let Some(pkg) = offerings.current().and_then(|o| o.package(id)) {
-            println!("{} — {}", pkg.store_product.title, pkg.store_product.price.formatted());
+            println!("{}: {}", pkg.store_product.title, pkg.store_product.price.formatted());
         }
     }
 }
 ```
 
-The demo renders this config as a bottom sheet / centered card — header,
+The demo renders this config as a bottom sheet / centered card: header,
 title, subtitle, feature list, selectable package cards, and a CTA that buys
 the selected package, all in the dashboard's own colors. See
 `demo/tauri-app/ui/main.js` (`renderPaywall`) for a complete v1 renderer.
@@ -94,6 +94,32 @@ if let Some(pro) = info.entitlements.get("pro") {
     println!("active={} renews={} until={:?}", pro.is_active, pro.will_renew, pro.expiration_date);
 }
 println!("active subs: {:?}", info.active_subscriptions());
+```
+
+### Customer center
+
+RevenueCat's Customer Center is a prebuilt screen in the native SDKs; here it's
+data you render (like paywalls). `CustomerInfo` carries what a self-serve
+support screen needs: status, renewal, billing issues, and the store's own
+manage page.
+
+```rust
+let info = purchases.get_customer_info(Default::default()).await?;
+
+// "Manage / cancel subscription" → open the store's management page
+// (in Tauri, hand `url` to tauri-plugin-opener).
+if let Some(url) = &info.management_url {
+    open_url(url);
+}
+
+for (product_id, sub) in &info.subscriptions {
+    println!("{product_id}: active={} renews={} until={:?}",
+        sub.is_active, sub.will_renew, sub.expires_date);
+    if sub.billing_issues_detected_at.is_some() { /* show a fix-payment banner */ }
+    if sub.unsubscribe_detected_at.is_some() { /* auto-renew off → offer resubscribe */ }
+}
+
+let info = purchases.restore_purchases().await?;   // the "Restore purchases" button
 ```
 
 ### Identity and attributes
@@ -150,7 +176,7 @@ let purchases = Purchases::configure(
 purchases.flush_diagnostics().await?;
 ```
 
-### Real stores — the `StoreBilling` trait
+### Real stores: the `StoreBilling` trait
 
 Everything above the store is pure logic + HTTP. Implement one trait to plug
 in StoreKit / Play Billing and pass it via `ConfigurationBuilder::store_billing`:
@@ -174,7 +200,7 @@ Play Billing (Kotlin) for Tauri mobile apps.
 
 ### In a Tauri app
 
-The SDK is instance-based — configure once, manage it, borrow in commands.
+The SDK is instance-based: configure once, manage it, borrow in commands.
 Every model and `revenuecat::Error` are `Serialize`, so commands return them
 directly (with a stable error `code` for the UI).
 
@@ -211,7 +237,7 @@ is `tauri://localhost` on macOS/Linux but `http://tauri.localhost` on Windows.
 | `crates/revenuecat` | The SDK: models, HTTP client, backend ops, `Purchases` facade, `StoreBilling` trait + simulated Test Store |
 | `crates/revenuecat-mock` | In-process mock of the RevenueCat API (axum), signs responses with a test Ed25519 chain |
 | `crates/tauri-plugin-revenuecat` | Tauri 2 mobile plugin: StoreKit 2 / Play Billing shims behind `StoreBilling` |
-| `demo/tauri-app` | Tauri 2 demo — configured at runtime from a key input |
+| `demo/tauri-app` | Tauri 2 demo, configured at runtime from a key input |
 
 ## Demo
 
@@ -219,7 +245,7 @@ is `tauri://localhost` on macOS/Linux but `http://tauri.localhost` on Windows.
 cargo run -p revenuecat-tauri-demo
 ```
 
-![Configure the SDK — enter a key to pick the backend](docs/setup-ui.png)
+![Configure the SDK: enter a key to pick the backend](docs/setup-ui.png)
 
 Enter an API key on the setup screen to pick the backend:
 
@@ -228,7 +254,7 @@ Enter an API key on the setup screen to pick the backend:
 - `appl_…` / `goog_…` → StoreKit 2 / Play Billing (mobile, `--features native-store`).
 
 **Show paywall** renders the dashboard paywall from `Offering.paywall` in the
-webview and buys the selected package — the same config a native SDK would draw.
+webview and buys the selected package, the same config a native SDK would draw.
 
 There's also a CLI walkthrough of the same flow:
 
@@ -245,7 +271,7 @@ cargo deny check                # advisories / licenses
 ```
 
 The integration suite runs the real SDK stack against `revenuecat-mock` and
-asserts exact wire behavior — request paths, headers, receipt-body fields,
+asserts exact wire behavior: request paths, headers, receipt-body fields,
 ETag 304 replay, and full Ed25519 verification.
 
 **Device-verified:** the Tauri demo has been run on a physical **iPhone 16
@@ -258,22 +284,22 @@ need paid store accounts.
 
 ## Supported platforms & requirements
 
-Native in-app-purchase APIs are gated two ways — by **OS version** (StoreKit 2
+Native in-app-purchase APIs are gated two ways: by **OS version** (StoreKit 2
 needs iOS 15+) and by **store-tooling version** (Google mandates a minimum Play
 Billing Library for submissions). What you can run depends on which layer you
 use.
 
-**SDK core (`revenuecat-rs`)** — pure Rust HTTP, no platform APIs. Runs
+**SDK core (`revenuecat-rs`)**: pure Rust HTTP, no platform APIs. Runs
 anywhere Rust does: desktop (macOS/Linux/Windows), servers/CI, and inside a
 Tauri mobile app.
 
 | | Requirement |
 |---|---|
 | Rust | **1.90+** (edition 2021) |
-| TLS | bundled webpki roots via rustls — no OpenSSL, no Android platform-verifier/JNI |
-| Store account | **none** with a `test_` key (simulated Test Store) — desktop + CI included |
+| TLS | bundled webpki roots via rustls; no OpenSSL, no Android platform-verifier/JNI |
+| Store account | **none** with a `test_` key (simulated Test Store); desktop + CI included |
 
-**Native store bridge (`tauri-plugin-revenuecat`)** — only for real StoreKit 2 /
+**Native store bridge (`tauri-plugin-revenuecat`)**: only for real StoreKit 2 /
 Play Billing purchases (`appl_`/`goog_` keys, `--features native-store`). The OS
 floors here match Apple's and Google's own:
 
@@ -304,8 +330,7 @@ purchase end to end against the real Test Store backend.
 | `POST /v1/subscribers/redeem_purchase` | ✅ typed results + deep-link parser |
 | `POST /v1/diagnostics` | ✅ opt-in; Android entry shape and retry semantics |
 | Native stores (StoreKit 2 / Play Billing) | 🔶 `tauri-plugin-revenuecat` shims code-complete; device E2E pending |
-| Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 templates fully typed; v2 components as raw JSON — render in your webview (the demo does) |
-| Customer center UI | ❌ out of scope |
+| Paywalls (`paywall` + `paywall_components` on offerings) | ✅ v1 templates fully typed; v2 components as raw JSON; render in your webview (the demo does) |
 
 Speaks the documented surface plus the endpoints the official MIT-licensed
 clients use.
