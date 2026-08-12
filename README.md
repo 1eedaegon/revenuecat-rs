@@ -254,6 +254,39 @@ in the mobile runtime (TLS via bundled webpki roots, no platform-verifier JNI
 dependency). Native-store (StoreKit 2 / Play Billing) sandbox purchases still
 need paid store accounts.
 
+## Supported platforms & requirements
+
+Native in-app-purchase APIs are gated two ways — by **OS version** (StoreKit 2
+needs iOS 15+) and by **store-tooling version** (Google mandates a minimum Play
+Billing Library for submissions). What you can run depends on which layer you
+use.
+
+**SDK core (`revenuecat-rs`)** — pure Rust HTTP, no platform APIs. Runs
+anywhere Rust does: desktop (macOS/Linux/Windows), servers/CI, and inside a
+Tauri mobile app.
+
+| | Requirement |
+|---|---|
+| Rust | **1.90+** (edition 2021) |
+| TLS | bundled webpki roots via rustls — no OpenSSL, no Android platform-verifier/JNI |
+| Store account | **none** with a `test_` key (simulated Test Store) — desktop + CI included |
+
+**Native store bridge (`tauri-plugin-revenuecat`)** — only for real StoreKit 2 /
+Play Billing purchases (`appl_`/`goog_` keys, `--features native-store`). The OS
+floors here match Apple's and Google's own:
+
+| Platform | Floor | Why |
+|---|---|---|
+| iOS / iPadOS | **15.0+** | StoreKit 2 (Swift-concurrency IAP); the plugin is `@available(iOS 15, *)` and rejects older with a clear error |
+| macOS | **12.0+** | StoreKit 2 shipped with the iOS-15 generation |
+| Android | **API 24+ (7.0)** | plugin `minSdk = 24`, Play Billing; Google requires Billing Library **v7+** for new Play submissions (deadline 2026-08-31) |
+| Tauri | **2.x** | mobile runtime + IPC |
+
+**Verified in CI** (compile checks, self-hosted macOS ARM64 runner):
+`aarch64-apple-ios` (+ simulator) and `aarch64-linux-android`.
+**Device-verified:** iPhone 16 (iOS) and Galaxy S23 (Android) each completed a
+purchase end to end against the real Test Store backend.
+
 ## Protocol coverage
 
 | Endpoint | Status |
@@ -274,6 +307,12 @@ need paid store accounts.
 
 Not affiliated with RevenueCat. Only the documented surface plus the endpoints
 the official MIT-licensed clients use is spoken.
+
+## Migration
+
+Coming from an official SDK (`PurchaserInfo` → `CustomerInfo`, singleton →
+instance), from raw REST calls, or upgrading across a `0.x` breaking change?
+See the [migration guide](docs/MIGRATION.md).
 
 ## License
 
