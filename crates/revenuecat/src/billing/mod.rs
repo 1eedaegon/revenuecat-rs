@@ -26,6 +26,12 @@ pub trait StoreBilling: Send + Sync {
 
     /// Acknowledges/consumes/finishes a transaction AFTER the backend has
     /// accepted the receipt — the same ordering the official SDKs enforce.
+    ///
+    /// `should_consume` is `true` only for consumable purchases: consume on
+    /// Play Billing (so the product can be repurchased), plain `finish()` on
+    /// StoreKit 2 (which has no client-side consume). With `false`,
+    /// acknowledge on Play Billing — never consume a subscription token,
+    /// that is a Play Billing developer error — and `finish()` on StoreKit.
     async fn finish_transaction(
         &self,
         transaction: &StoreTransaction,

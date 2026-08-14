@@ -16,7 +16,7 @@ use crate::error::{Error, ErrorCode, Result};
 use crate::http::HttpClient;
 use crate::identity::IdentityManager;
 use crate::models::{
-    CustomerInfo, Offerings, Package, RedeemResult, StoreProduct, StoreTransaction,
+    CustomerInfo, Offerings, Package, ProductType, RedeemResult, StoreProduct, StoreTransaction,
     VirtualCurrencies, WebPurchaseRedemption,
 };
 
@@ -230,10 +230,15 @@ impl Purchases {
 
         let customer_info = self.inner.backend.post_receipt(&request).await?;
         // Finish only after the backend accepted the receipt — official SDK
-        // ordering that prevents losing purchases.
+        // ordering that prevents losing purchases. Only consumables are
+        // consumed; consuming a subscription token is a Play Billing
+        // developer error (subscriptions/entitlements get acknowledged).
         self.inner
             .billing
-            .finish_transaction(&transaction, true)
+            .finish_transaction(
+                &transaction,
+                product.product_type == ProductType::Consumable,
+            )
             .await?;
         self.store_and_notify(&customer_info);
         Ok(PurchaseResult {
