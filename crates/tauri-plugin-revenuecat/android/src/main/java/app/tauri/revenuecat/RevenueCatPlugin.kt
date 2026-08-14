@@ -145,22 +145,40 @@ class RevenueCatPlugin(private val activity: Activity) :
                 invoke.reject(connectionError)
                 return@executeRequestOnUIThread
             }
-            withConnectedClient(invoke::reject) {
-                if (args.shouldConsume) {
+            if (args.shouldConsume) {
+                withConnectedClient(invoke::reject) {
                     val params = ConsumeParams.newBuilder()
                         .setPurchaseToken(args.purchaseToken)
                         .build()
                     consumeAsync(params) { billingResult, _ ->
                         handleFinishTransactionResult(invoke, billingResult)
                     }
+                }
+            } else {
+                acknowledgeIfNeeded(invoke, args.purchaseToken)
+            }
+        }
+    }
+
+    // Play refunds any purchase not acknowledged within 3 days, so every
+    // non-consumed purchase (subs and entitlement in-apps) must be
+    // acknowledged — but acknowledging twice is a developer error, and
+    // restores can hand us already-acknowledged purchases. Look the token up
+    // and skip the call when it is already done.
+    private fun acknowledgeIfNeeded(invoke: Invoke, purchaseToken: String) {
+        queryOwnedPurchases(BillingClient.ProductType.SUBS, invoke::reject) { subs ->
+            queryOwnedPurchases(BillingClient.ProductType.INAPP, invoke::reject) { inApp ->
+                val owned = (subs + inApp).firstOrNull { it.purchaseToken == purchaseToken }
+                if (owned != null && owned.isAcknowledged) {
+                    invoke.resolve(JSObject())
                 } else {
-                    // Play refunds any purchase not acknowledged within 3 days, so every
-                    // non-consumed purchase (subs and entitlement in-apps) must be acknowledged.
-                    val params = AcknowledgePurchaseParams.newBuilder()
-                        .setPurchaseToken(args.purchaseToken)
-                        .build()
-                    acknowledgePurchase(params) { billingResult ->
-                        handleFinishTransactionResult(invoke, billingResult)
+                    withConnectedClient(invoke::reject) {
+                        val params = AcknowledgePurchaseParams.newBuilder()
+                            .setPurchaseToken(purchaseToken)
+                            .build()
+                        acknowledgePurchase(params) { billingResult ->
+                            handleFinishTransactionResult(invoke, billingResult)
+                        }
                     }
                 }
             }

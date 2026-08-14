@@ -14,7 +14,10 @@ private struct PurchaseArgs: Decodable {
 }
 
 private struct FinishTransactionArgs: Decodable {
-    let transactionId: String
+    // Optional: the Rust bridge sends null when the originating store
+    // transaction carried no id (decoding a non-optional would throw and
+    // fail the finish after an otherwise successful purchase).
+    let transactionId: String?
     let shouldConsume: Bool
 }
 
@@ -244,9 +247,16 @@ class RevenueCatPlugin: Plugin {
     @objc public func finishTransaction(_ invoke: Invoke) throws {
         let args = try invoke.parseArgs(FinishTransactionArgs.self)
         Task {
+            guard let transactionId = args.transactionId else {
+                // Without a StoreKit transaction id there is nothing to
+                // match; the desired end state (nothing left unfinished for
+                // this purchase) holds, so this is not an error.
+                invoke.resolve()
+                return
+            }
             for await result in Transaction.unfinished {
                 let transaction = result.unsafePayloadValue
-                guard String(transaction.id) == args.transactionId else {
+                guard String(transaction.id) == transactionId else {
                     continue
                 }
                 // StoreKit 2 has no client-side consume; for consumables,

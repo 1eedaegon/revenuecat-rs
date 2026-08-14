@@ -26,6 +26,8 @@ dependencies {
     // consuming app's Gradle build; adjust the path if the module name differs.
     implementation(project(":tauri-android"))
 
-    implementation("com.android.billingclient:billing-ktx:8.0.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // The base (Java) artifact, NOT billing-ktx: the ktx module ships Kotlin
+    // 2.1 metadata, which breaks consumers on Tauri's default Kotlin 1.9
+    // template, and this plugin only uses the callback APIs anyway.
+    implementation("com.android.billingclient:billing:8.0.0")
 }

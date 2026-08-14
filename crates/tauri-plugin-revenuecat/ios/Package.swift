@@ -2,16 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "RevenueCatPlugin",
+    name: "tauri-plugin-revenuecat",
     platforms: [
         .iOS(.v15),
         .macOS(.v12)
     ],
     products: [
         .library(
-            name: "RevenueCatPlugin",
+            name: "tauri-plugin-revenuecat",
             type: .static,
-            targets: ["RevenueCatPlugin"]
+            targets: ["tauri-plugin-revenuecat"]
         )
     ],
     dependencies: [
@@ -20,7 +20,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "RevenueCatPlugin",
+            name: "tauri-plugin-revenuecat",
             dependencies: [
                 .byName(name: "Tauri")
             ],
