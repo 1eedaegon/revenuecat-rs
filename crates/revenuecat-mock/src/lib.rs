@@ -32,6 +32,7 @@ pub struct MockRevenueCat {
     virtual_currencies: Vec<MockVirtualCurrency>,
     redemptions: HashMap<String, MockRedemption>,
     tamper_signatures: bool,
+    accept_store_tokens: bool,
 }
 
 impl MockRevenueCat {
@@ -142,16 +143,29 @@ impl MockRevenueCat {
         self
     }
 
+    /// Accepts native store `fetch_token`s (StoreKit 2 JWS / Play Billing
+    /// purchase tokens) on `POST /v1/receipts` instead of requiring `test_`
+    /// Test Store tokens. The mock cannot validate them cryptographically —
+    /// it grants the purchase as the real backend would after validation.
+    /// Used when a device/simulator build with real store billing is pointed
+    /// at the mock via `proxy_url`.
+    pub fn accept_store_tokens(mut self) -> Self {
+        self.accept_store_tokens = true;
+        self
+    }
+
     /// Binds to an ephemeral localhost port and starts serving.
     pub async fn spawn(self) -> std::io::Result<MockServerHandle> {
-        let state = Arc::new(ServerState::new(
+        let mut state = ServerState::new(
             self.products,
             self.offerings,
             self.current_offering_id,
             self.virtual_currencies,
             self.redemptions,
             self.tamper_signatures,
-        ));
+        );
+        state.accept_store_tokens = self.accept_store_tokens;
+        let state = Arc::new(state);
         let router = server::router(Arc::clone(&state));
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;

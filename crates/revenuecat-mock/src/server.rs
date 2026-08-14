@@ -429,7 +429,7 @@ async fn post_receipts(
     if app_user_id.is_empty() {
         return backend_error(StatusCode::BAD_REQUEST, 7220, "Empty app user id.");
     }
-    if !fetch_token.starts_with("test_") {
+    if !fetch_token.starts_with("test_") && !state.accept_store_tokens {
         // The real backend rejects tokens it cannot associate with a store.
         return backend_error(
             StatusCode::BAD_REQUEST,

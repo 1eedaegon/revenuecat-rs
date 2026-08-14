@@ -124,6 +124,11 @@ pub struct ServerState {
     pub offerings: Vec<MockOffering>,
     pub current_offering_id: Option<String>,
     pub virtual_currencies: Vec<MockVirtualCurrency>,
+    /// Accept `fetch_token`s that are not `test_` Test Store tokens (i.e.
+    /// StoreKit 2 JWS / Play Billing purchase tokens the mock cannot parse).
+    /// Off by default to mirror the real backend, which rejects tokens it
+    /// cannot associate with a store app.
+    pub accept_store_tokens: bool,
     pub signer: crate::sign::ResponseSigner,
     pub(crate) redemptions: Mutex<HashMap<String, MockRedemption>>,
     /// redemption token -> app_user_id that redeemed it.
@@ -153,6 +158,7 @@ impl ServerState {
             offerings,
             current_offering_id,
             virtual_currencies,
+            accept_store_tokens: false,
             signer: crate::sign::ResponseSigner::new(tamper_signatures),
             redemptions: Mutex::new(redemptions),
             redeemed_by: Mutex::new(HashMap::new()),
