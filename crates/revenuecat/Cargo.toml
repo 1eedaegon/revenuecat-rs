@@ -1,6 +1,6 @@
 [package]
 name = "revenuecat-rs"
-description = "Unofficial RevenueCat SDK for Rust: protocol-compatible with the official mobile SDKs"
+description = "RevenueCat SDK for Rust: protocol-compatible with the official mobile SDKs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
