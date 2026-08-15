@@ -3,19 +3,21 @@ name: Release to crates.io
 on:
   push:
     tags: ["v*"]
+  # Manual re-run without cutting a new tag (e.g. to finish a half-published
+  # release). Both jobs are idempotent, so this only publishes what is missing.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUSTC_WRAPPER: sccache
 
 jobs:
-  publish:
-    name: Verify and publish (SDK + Tauri plugin)
+  publish-crates:
+    name: Publish crates (SDK + Tauri plugin)
     runs-on: [self-hosted, macOS, ARM64]
     environment: crates-io
     permissions:
       contents: read
-      id-token: write # OIDC for npm Trusted Publishing (token-less)
     steps:
       - uses: actions/checkout@v7
       - name: Runner PATH
@@ -26,45 +28,88 @@ jobs:
           echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Verify tag matches crate + npm versions
+      - name: Verify crate + npm versions agree (and match the tag)
         run: |
           # crates.io publishes are irreversible, so every version must agree
           # BEFORE the first publish. v1.2.1 died the other way round: the crate
-          # went out at 1.2.1, then npm failed because package.json was still
-          # 1.2.0 — leaving crates.io ahead of npm for good. Gate all three here.
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # went out, then npm failed on a stale package.json — leaving crates.io
+          # permanently ahead of npm. Gate all of it here.
           CRATE_VERSION=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.name == "revenuecat-rs") | .version')
           NPM_VERSION=$(node -p "require('./crates/tauri-plugin-revenuecat/package.json').version")
-          echo "tag=$TAG_VERSION crate=$CRATE_VERSION npm=$NPM_VERSION"
-          test "$TAG_VERSION" = "$CRATE_VERSION" \
-            || { echo "crate ($CRATE_VERSION) != tag ($TAG_VERSION)"; exit 1; }
-          test "$TAG_VERSION" = "$NPM_VERSION" \
-            || { echo "package.json ($NPM_VERSION) != tag ($TAG_VERSION)"; exit 1; }
+          echo "crate=$CRATE_VERSION npm=$NPM_VERSION ref=$GITHUB_REF_NAME ($GITHUB_REF_TYPE)"
+          test "$CRATE_VERSION" = "$NPM_VERSION" \
+            || { echo "package.json ($NPM_VERSION) != crate ($CRATE_VERSION)"; exit 1; }
+          # On a tag push the tag must match too; workflow_dispatch trusts the manifest.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            test "${GITHUB_REF_NAME#v}" = "$CRATE_VERSION" \
+              || { echo "tag (${GITHUB_REF_NAME#v}) != crate ($CRATE_VERSION)"; exit 1; }
+          fi
 
       - name: Test before publishing
         run: cargo test -p revenuecat-rs -p revenuecat-mock
 
-      # Publish the SDK first; `cargo publish` waits for it to land in the
-      # index before the plugin (which depends on it) verify-builds.
+      # Publish the SDK first; the plugin depends on it and cargo waits for the
+      # new version to land in the index. Both publishes are idempotent — a
+      # version already on crates.io is skipped, so a re-run after a partial
+      # failure sails past instead of dying on "already exists".
       - name: Publish SDK (revenuecat-rs)
-        run: cargo publish -p revenuecat-rs --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+        run: |
+          V=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "revenuecat-rs") | .version')
+          if curl -sf -H "User-Agent: revenuecat-rs-release" \
+              "https://crates.io/api/v1/crates/revenuecat-rs/$V" >/dev/null; then
+            echo "revenuecat-rs $V already on crates.io — skipping"
+          else
+            cargo publish -p revenuecat-rs --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+          fi
 
       - name: Publish Tauri plugin (tauri-plugin-revenuecat)
-        run: cargo publish -p tauri-plugin-revenuecat --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
-
-      # npm package `tauri-plugin-revenuecat` (JS/TS bindings), published via npm
-      # Trusted Publishing (OIDC) — no token. Requires `id-token: write` above
-      # and a matching Trusted Publisher on npmjs.com for this repo + workflow
-      # (release.yml). npm >= 11.5 exchanges the OIDC token automatically and
-      # attaches provenance.
-      - name: Publish npm package (tauri-plugin-revenuecat)
-        working-directory: crates/tauri-plugin-revenuecat
         run: |
-          # Version already gated against the tag up front (see the verify step).
-          npm install --no-audit --no-fund   # dev: typescript + @tauri-apps/api
-          npm run build                      # regenerate dist-js from guest-js
-          # Use a clean userconfig so a stale local npm login on the self-hosted
-          # runner doesn't shadow OIDC trusted publishing.
+          V=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "tauri-plugin-revenuecat") | .version')
+          if curl -sf -H "User-Agent: revenuecat-rs-release" \
+              "https://crates.io/api/v1/crates/tauri-plugin-revenuecat/$V" >/dev/null; then
+            echo "tauri-plugin-revenuecat $V already on crates.io — skipping"
+          else
+            cargo publish -p tauri-plugin-revenuecat --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+          fi
+
+  publish-npm:
+    name: Publish npm (tauri-plugin-revenuecat)
+    needs: publish-crates
+    # Trusted Publishing signs Sigstore provenance, which npm only accepts from
+    # GitHub-hosted runners — a self-hosted runner returns E422 "Unsupported
+    # runner environment". This one tiny job is the only hosted minute the
+    # release spends; the heavy iOS/crates work stays on the local runner.
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write # OIDC for npm Trusted Publishing (token-less)
+    defaults:
+      run:
+        working-directory: crates/tauri-plugin-revenuecat
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: npm >= 11.5 for OIDC Trusted Publishing
+        run: npm install -g npm@latest
+      - name: Publish (idempotent — skip a version already on npm)
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            test "${GITHUB_REF_NAME#v}" = "$V" \
+              || { echo "tag (${GITHUB_REF_NAME#v}) != package.json ($V)"; exit 1; }
+          fi
+          if npm view "tauri-plugin-revenuecat@$V" version >/dev/null 2>&1; then
+            echo "tauri-plugin-revenuecat@$V already on npm — skipping"
+            exit 0
+          fi
+          npm install --no-audit --no-fund
+          npm run build
+          # Clean userconfig so no stray auth token shadows OIDC publishing.
           export npm_config_userconfig="$(mktemp)"
           npm publish
