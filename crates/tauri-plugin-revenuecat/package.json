@@ -1,6 +1,6 @@
 {
   "name": "tauri-plugin-revenuecat",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Typed JS/TS bindings for the tauri-plugin-revenuecat plugin: drive RevenueCat from a Tauri webview.",
   "license": "MIT",
   "type": "module",
