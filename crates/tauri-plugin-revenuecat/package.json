@@ -1,7 +1,21 @@
 {
   "name": "tauri-plugin-revenuecat",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Typed JS/TS bindings for the tauri-plugin-revenuecat plugin: drive RevenueCat from a Tauri webview.",
+  "keywords": [
+    "tauri",
+    "tauri-plugin",
+    "revenuecat",
+    "iap",
+    "in-app-purchase",
+    "subscriptions",
+    "billing",
+    "storekit",
+    "play-billing",
+    "ios",
+    "android",
+    "mobile"
+  ],
   "license": "MIT",
   "type": "module",
   "types": "./dist-js/index.d.ts",
@@ -23,6 +37,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/1eedaegon/revenuecat-rs.git"
+  },
+  "homepage": "https://github.com/1eedaegon/revenuecat-rs#readme",
+  "bugs": {
+    "url": "https://github.com/1eedaegon/revenuecat-rs/issues"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0"
