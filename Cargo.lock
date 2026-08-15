@@ -2946,7 +2946,7 @@ dependencies = [
 
 [[package]]
 name = "revenuecat-mock"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -2963,7 +2963,7 @@ dependencies = [
 
 [[package]]
 name = "revenuecat-rs"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2986,7 +2986,7 @@ dependencies = [
 
 [[package]]
 name = "revenuecat-tauri-demo"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "revenuecat-mock",
  "revenuecat-rs",
@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-revenuecat"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "async-trait",
  "chrono",
