@@ -1,5 +1,10 @@
 # revenuecat-rs
 
+[![crates.io](https://img.shields.io/crates/v/revenuecat-rs?label=revenuecat-rs)](https://crates.io/crates/revenuecat-rs)
+[![docs.rs](https://img.shields.io/docsrs/revenuecat-rs)](https://docs.rs/revenuecat-rs)
+[![npm](https://img.shields.io/npm/v/tauri-plugin-revenuecat?label=npm%20·%20tauri-plugin-revenuecat)](https://www.npmjs.com/package/tauri-plugin-revenuecat)
+[![CI](https://github.com/1eedaegon/revenuecat-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/1eedaegon/revenuecat-rs/actions/workflows/ci.yml)
+
 **RevenueCat SDK for Rust**, protocol-compatible with the official
 [purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT), down
 to the same wire formats.
