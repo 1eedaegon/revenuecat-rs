@@ -4,20 +4,20 @@ Configure the SDK and drive offerings, purchases, customer info, and identity fr
 
 #### This default permission set includes the following:
 
+- `allow-register-listener`
+- `allow-remove-listener`
 - `allow-configure`
 - `allow-session-info`
 - `allow-get-offerings`
 - `allow-get-customer-info`
 - `allow-purchase-package`
 - `allow-restore`
+- `allow-sync-pending-purchases`
+- `allow-sync-purchases`
 - `allow-log-in`
 - `allow-log-out`
 - `allow-set-email`
 - `allow-manage-subscriptions`
-- `allow-query-products`
-- `allow-purchase`
-- `allow-query-purchases`
-- `allow-finish-transaction`
 
 ## Permission Table
 
@@ -50,32 +50,6 @@ Enables the configure command without any pre-configured scope.
 <td>
 
 Denies the configure command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`revenuecat:allow-finish-transaction`
-
-</td>
-<td>
-
-Enables the finish_transaction command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`revenuecat:deny-finish-transaction`
-
-</td>
-<td>
-
-Denies the finish_transaction command without any pre-configured scope.
 
 </td>
 </tr>
@@ -213,32 +187,6 @@ Denies the manage_subscriptions command without any pre-configured scope.
 <tr>
 <td>
 
-`revenuecat:allow-purchase`
-
-</td>
-<td>
-
-Enables the purchase command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`revenuecat:deny-purchase`
-
-</td>
-<td>
-
-Denies the purchase command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `revenuecat:allow-purchase-package`
 
 </td>
@@ -265,25 +213,12 @@ Denies the purchase_package command without any pre-configured scope.
 <tr>
 <td>
 
-`revenuecat:allow-query-products`
+`revenuecat:allow-register-listener`
 
 </td>
 <td>
 
-Enables the query_products command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`revenuecat:deny-query-products`
-
-</td>
-<td>
-
-Denies the query_products command without any pre-configured scope.
+Enables the register_listener command without any pre-configured scope.
 
 </td>
 </tr>
@@ -291,12 +226,12 @@ Denies the query_products command without any pre-configured scope.
 <tr>
 <td>
 
-`revenuecat:allow-query-purchases`
+`revenuecat:deny-register-listener`
 
 </td>
 <td>
 
-Enables the query_purchases command without any pre-configured scope.
+Denies the register_listener command without any pre-configured scope.
 
 </td>
 </tr>
@@ -304,12 +239,25 @@ Enables the query_purchases command without any pre-configured scope.
 <tr>
 <td>
 
-`revenuecat:deny-query-purchases`
+`revenuecat:allow-remove-listener`
 
 </td>
 <td>
 
-Denies the query_purchases command without any pre-configured scope.
+Enables the remove_listener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:deny-remove-listener`
+
+</td>
+<td>
+
+Denies the remove_listener command without any pre-configured scope.
 
 </td>
 </tr>
@@ -388,6 +336,58 @@ Enables the set_email command without any pre-configured scope.
 <td>
 
 Denies the set_email command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:allow-sync-pending-purchases`
+
+</td>
+<td>
+
+Enables the sync_pending_purchases command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:deny-sync-pending-purchases`
+
+</td>
+<td>
+
+Denies the sync_pending_purchases command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:allow-sync-purchases`
+
+</td>
+<td>
+
+Enables the sync_purchases command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`revenuecat:deny-sync-purchases`
+
+</td>
+<td>
+
+Denies the sync_purchases command without any pre-configured scope.
 
 </td>
 </tr>

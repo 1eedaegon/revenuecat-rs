@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::configuration::{Configuration, EntitlementVerificationMode};
+use crate::configuration::{ApiKeyKind, Configuration, EntitlementVerificationMode};
 use crate::diagnostics::DiagnosticsTracker;
 use crate::error::{Error, ErrorCode, Result};
 use crate::http::etag::ETagManager;
@@ -50,7 +50,7 @@ pub fn encode_path_segment(segment: &str) -> String {
 /// Per-request protocol options, mirroring purchases-android's per-endpoint
 /// `isRetryable` / `supportsSignatureVerification` / `needsNonceToPerformSigning`
 /// flags plus `postFieldsToSign`.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct RequestOptions {
     pub retryable: bool,
     /// Endpoint supports Trusted Entitlements verification.
@@ -81,7 +81,6 @@ impl RequestOptions {
     }
 }
 
-#[derive(Debug)]
 pub struct HttpClient {
     client: reqwest::Client,
     base_url: String,
@@ -130,7 +129,14 @@ impl HttpClient {
             ("X-Platform", config.platform.as_str().to_owned()),
             ("X-Version", env!("CARGO_PKG_VERSION").to_owned()),
             ("X-Observer-Mode-Enabled", "false".to_owned()),
+            ("X-Is-Debug-Build", cfg!(debug_assertions).to_string()),
         ];
+        let sandbox_environment = config
+            .sandbox_environment
+            .or_else(|| (config.api_key_kind() == ApiKeyKind::TestStore).then_some(true));
+        if let Some(is_sandbox) = sandbox_environment {
+            default_headers.push(("X-Is-Sandbox", is_sandbox.to_string()));
+        }
         if let Some(flavor) = &config.platform_flavor {
             default_headers.push(("X-Platform-Flavor", flavor.clone()));
         }
@@ -442,12 +448,7 @@ impl HttpClient {
         if !self.diagnostics.is_enabled() {
             return;
         }
-        let host = self
-            .base_url
-            .split("//")
-            .nth(1)
-            .unwrap_or(&self.base_url)
-            .to_owned();
+        let host = diagnostic_host(&self.base_url);
         let verification_name = match verification {
             VerificationResult::NotRequested => "NOT_REQUESTED",
             VerificationResult::Verified => "VERIFIED",
@@ -545,6 +546,24 @@ impl HttpClient {
     }
 }
 
+fn diagnostic_host(base_url: &str) -> String {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|url| {
+            let raw_host = url.host_str()?;
+            let host = if raw_host.contains(':') {
+                format!("[{raw_host}]")
+            } else {
+                raw_host.to_owned()
+            };
+            Some(match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host,
+            })
+        })
+        .unwrap_or_else(|| "[REDACTED]".to_owned())
+}
+
 #[derive(Debug)]
 enum Outcome {
     Resolved {
@@ -636,6 +655,19 @@ fn extract_attribute_errors(body: &Value) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn configured_client(api_key: &str) -> HttpClient {
+        let config = Configuration::builder(api_key).build().unwrap();
+        HttpClient::new(&config, Arc::new(DiagnosticsTracker::new(false))).unwrap()
+    }
+
+    fn default_header<'a>(client: &'a HttpClient, name: &str) -> Option<&'a str> {
+        client
+            .default_headers
+            .iter()
+            .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
     #[test]
     fn encodes_anonymous_ids_for_url_paths() {
         let encoded = encode_path_segment("$RCAnonymousID:abc123");
@@ -676,5 +708,81 @@ mod tests {
     fn unparseable_5xx_maps_to_unknown_backend_error() {
         let error = parse_backend_error(503, "upstream connect error");
         assert_eq!(error.code, ErrorCode::UnknownBackendError);
+    }
+
+    #[test]
+    fn test_store_keys_send_sandbox_and_build_metadata_headers() {
+        let client = configured_client("test_header_key");
+
+        assert_eq!(default_header(&client, "X-Is-Sandbox"), Some("true"));
+        assert_eq!(
+            default_header(&client, "X-Is-Debug-Build"),
+            Some(if cfg!(debug_assertions) {
+                "true"
+            } else {
+                "false"
+            })
+        );
+    }
+
+    #[test]
+    fn production_keys_do_not_claim_sandbox() {
+        let client = configured_client("goog_header_key");
+
+        assert_eq!(default_header(&client, "X-Is-Sandbox"), None);
+    }
+
+    #[test]
+    fn explicit_native_sandbox_state_overrides_production_key_default() {
+        let config = Configuration::builder("appl_header_key")
+            .sandbox_environment(true)
+            .build()
+            .unwrap();
+        let client = HttpClient::new(&config, Arc::new(DiagnosticsTracker::new(false))).unwrap();
+
+        assert_eq!(default_header(&client, "X-Is-Sandbox"), Some("true"));
+    }
+
+    #[test]
+    fn explicit_native_production_state_is_sent_as_false() {
+        let config = Configuration::builder("appl_header_key")
+            .sandbox_environment(false)
+            .build()
+            .unwrap();
+        let client = HttpClient::new(&config, Arc::new(DiagnosticsTracker::new(false))).unwrap();
+
+        assert_eq!(default_header(&client, "X-Is-Sandbox"), Some("false"));
+    }
+
+    #[test]
+    fn diagnostics_host_excludes_proxy_credentials_path_and_query() {
+        let config = Configuration::builder("appl_header_key")
+            .proxy_url(
+                "https://proxy-user:proxy-password@proxy.example:8443/private?access_token=query-secret",
+            )
+            .diagnostics_enabled(true)
+            .build()
+            .unwrap();
+        let diagnostics = Arc::new(DiagnosticsTracker::new(true));
+        let client = HttpClient::new(&config, Arc::clone(&diagnostics)).unwrap();
+
+        client.track_request(
+            &RequestOptions {
+                endpoint_name: Some("test_endpoint"),
+                ..RequestOptions::default()
+            },
+            Instant::now(),
+            200,
+            None,
+            VerificationResult::NotRequested,
+        );
+
+        let entries = diagnostics.take_batch().unwrap();
+        let properties = &entries[0]["properties"];
+        assert_eq!(properties["host"], "proxy.example:8443");
+        let serialized = serde_json::to_string(&entries).unwrap();
+        for secret in ["proxy-user", "proxy-password", "/private", "query-secret"] {
+            assert!(!serialized.contains(secret), "diagnostics exposed {secret}");
+        }
     }
 }

@@ -3,14 +3,18 @@
 //! the user acts, so every call runs on the blocking pool.
 
 use async_trait::async_trait;
-use revenuecat::{Error, ErrorCode, Result, StoreBilling, StoreProduct, StoreTransaction};
+use revenuecat::{
+    Error, ErrorCode, Result, StoreBilling, StoreProduct, StoreProductQuery, StoreProductResult,
+    StorePurchase, StorePurchaseOption, StoreReceiptContext, StoreTransaction,
+};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tauri::plugin::PluginHandle;
 use tauri::Runtime;
 
 use crate::models::{
-    FinishTransactionArgs, ProductsResponse, PurchaseArgs, PurchasesResponse, QueryProductsArgs,
+    FinishTransactionArgs, NativeProductsResponse, NativePurchaseResponse, NativePurchasesResponse,
+    NativeSandboxEnvironmentResponse, PurchaseArgs, QueryProductsArgs,
 };
 
 pub struct MobileStoreBilling<R: Runtime> {
@@ -36,42 +40,150 @@ impl<R: Runtime> MobileStoreBilling<R> {
                 // The shims reject with "cancelled" when the user backs out.
                 if message.contains("cancelled") {
                     Error::new(ErrorCode::PurchaseCancelledError, "Purchase was cancelled.")
+                } else if message.contains("payment pending") {
+                    Error::new(ErrorCode::PaymentPendingError, "The payment is pending.")
                 } else {
                     Error::with_underlying(ErrorCode::StoreProblemError, message)
                 }
             })
     }
+
+    async fn query_native_products(
+        &self,
+        args: QueryProductsArgs,
+    ) -> Result<NativeProductsResponse> {
+        self.run("queryProducts", args).await
+    }
+
+    async fn purchase_native(
+        &self,
+        product: &StoreProduct,
+        option: Option<&StorePurchaseOption>,
+        app_user_id: Option<&str>,
+        receipt_context: Option<&StoreReceiptContext>,
+    ) -> Result<StorePurchase> {
+        let base_plan_id = option.and_then(|value| value.platform_product_plan_identifier());
+        let args = match (app_user_id, receipt_context) {
+            (Some(app_user_id), Some(receipt_context)) => {
+                PurchaseArgs::for_user_with_receipt_context(
+                    product.identifier.clone(),
+                    base_plan_id,
+                    app_user_id,
+                    receipt_context,
+                )
+            }
+            (Some(app_user_id), None) => {
+                PurchaseArgs::for_user(product.identifier.clone(), base_plan_id, app_user_id)
+            }
+            (None, _) => PurchaseArgs::new(product.identifier.clone(), base_plan_id),
+        };
+        let response: NativePurchaseResponse = self.run("purchase", args).await?;
+        response.try_into_store_purchase()
+    }
+
+    async fn query_native_purchases(&self) -> Result<Vec<StorePurchase>> {
+        let response: NativePurchasesResponse = self.run("queryPurchases", ()).await?;
+        response
+            .purchases
+            .into_iter()
+            .map(NativePurchaseResponse::try_into_store_purchase)
+            .collect()
+    }
+
+    async fn query_native_pending_purchases(&self) -> Result<Vec<StorePurchase>> {
+        let response: NativePurchasesResponse = self.run("queryPendingPurchases", ()).await?;
+        response
+            .purchases
+            .into_iter()
+            .map(NativePurchaseResponse::try_into_store_purchase)
+            .collect()
+    }
 }
 
 #[async_trait]
 impl<R: Runtime> StoreBilling for MobileStoreBilling<R> {
+    async fn is_sandbox_environment(&self) -> Result<Option<bool>> {
+        let response: NativeSandboxEnvironmentResponse =
+            self.run("isSandboxEnvironment", ()).await?;
+        Ok(response.is_sandbox)
+    }
+
     async fn query_products(&self, product_ids: &[String]) -> Result<Vec<StoreProduct>> {
-        let response: ProductsResponse = self
-            .run(
-                "queryProducts",
-                QueryProductsArgs {
-                    ids: product_ids.to_vec(),
-                },
-            )
+        let response = self
+            .query_native_products(QueryProductsArgs::from_product_ids(product_ids))
             .await?;
-        Ok(response.products.into_iter().map(Into::into).collect())
+        Ok(response
+            .products
+            .into_iter()
+            .map(|product| product.into_store_product())
+            .collect())
+    }
+
+    async fn query_products_with_options(
+        &self,
+        queries: &[StoreProductQuery],
+    ) -> Result<Vec<StoreProductResult>> {
+        let response = self
+            .query_native_products(QueryProductsArgs::from_queries(queries))
+            .await?;
+        Ok(response
+            .products
+            .into_iter()
+            .map(|product| product.into_store_product_result())
+            .collect())
     }
 
     async fn purchase(&self, product: &StoreProduct) -> Result<StoreTransaction> {
-        let transaction: crate::models::PluginTransaction = self
-            .run(
-                "purchase",
-                PurchaseArgs {
-                    product_id: product.identifier.clone(),
-                },
-            )
-            .await?;
-        Ok(transaction.into())
+        Ok(self
+            .purchase_native(product, None, None, None)
+            .await?
+            .transaction)
+    }
+
+    async fn purchase_with_option(
+        &self,
+        product: &StoreProduct,
+        option: Option<&StorePurchaseOption>,
+    ) -> Result<StorePurchase> {
+        self.purchase_native(product, option, None, None).await
+    }
+
+    async fn purchase_with_option_for_user(
+        &self,
+        product: &StoreProduct,
+        option: Option<&StorePurchaseOption>,
+        app_user_id: &str,
+    ) -> Result<StorePurchase> {
+        self.purchase_native(product, option, Some(app_user_id), None)
+            .await
+    }
+
+    async fn purchase_with_receipt_context_for_user(
+        &self,
+        product: &StoreProduct,
+        option: Option<&StorePurchaseOption>,
+        app_user_id: &str,
+        receipt_context: &StoreReceiptContext,
+    ) -> Result<StorePurchase> {
+        self.purchase_native(product, option, Some(app_user_id), Some(receipt_context))
+            .await
     }
 
     async fn query_purchases(&self) -> Result<Vec<StoreTransaction>> {
-        let response: PurchasesResponse = self.run("queryPurchases", ()).await?;
-        Ok(response.purchases.into_iter().map(Into::into).collect())
+        Ok(self
+            .query_native_purchases()
+            .await?
+            .into_iter()
+            .map(|purchase| purchase.transaction)
+            .collect())
+    }
+
+    async fn query_purchases_with_context(&self) -> Result<Vec<StorePurchase>> {
+        self.query_native_purchases().await
+    }
+
+    async fn query_pending_purchases_with_context(&self) -> Result<Vec<StorePurchase>> {
+        self.query_native_pending_purchases().await
     }
 
     async fn finish_transaction(

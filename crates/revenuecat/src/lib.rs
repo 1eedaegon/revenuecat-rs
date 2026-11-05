@@ -1,9 +1,10 @@
 //! # revenuecat-rs
 //!
-//! RevenueCat SDK for Rust, protocol-compatible with the official
-//! [purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT).
-//! The server-side contract — endpoints, headers, custom ETag caching, error
-//! codes, and the `POST /v1/receipts` body — matches those SDKs' wire format.
+//! RevenueCat SDK for Rust, implemented as an independent direct port of
+//! behavior in the official [purchases-ios], [purchases-android], and
+//! [purchases-js] SDKs (all MIT). Compatibility is tracked per feature across
+//! the backend wire contract and native purchase lifecycle; this crate does
+//! not link those SDKs or claim parity with their UI surfaces.
 //!
 //! ```no_run
 //! use revenuecat::{CacheFetchPolicy, Configuration, Purchases};
@@ -57,7 +58,9 @@ pub use configuration::{
     DEFAULT_API_BASE,
 };
 pub use error::{Error, ErrorCode, Result};
-pub use identity::{generate_anonymous_id, is_anonymous_id, ANONYMOUS_ID_PREFIX};
+pub use identity::{
+    generate_anonymous_id, is_anonymous_id, ANONYMOUS_ID_PREFIX, MAX_APP_USER_ID_BYTES,
+};
 pub use models::*;
 pub use purchases::{CacheFetchPolicy, PurchaseResult, Purchases};
 pub use security::ROOT_PUBLIC_KEY_B64;

@@ -32,7 +32,7 @@ jobs:
       - name: clippy (deny warnings)
         run: cargo clippy -p revenuecat-rs -p revenuecat-mock --all-targets -- -D warnings
       - name: tests
-        run: cargo test -p revenuecat-rs -p revenuecat-mock
+        run: cargo test -p revenuecat-rs -p revenuecat-mock --all-targets
 
   tauri-demo:
     name: Full workspace incl. Tauri demo
@@ -49,13 +49,34 @@ jobs:
       - name: clippy full workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: tests (unit + integration + Tauri IPC)
-        run: cargo test --workspace
+        run: cargo test --workspace --all-targets
+
+  guest-js:
+    name: Guest JS build + tests
+    runs-on: [self-hosted, macOS, ARM64]
+    defaults:
+      run:
+        working-directory: crates/tauri-plugin-revenuecat
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --no-package-lock
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
 
   android-targets:
-    name: ARM Android compile check
+    name: Android Rust + Kotlin checks
     runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Runner PATH
         run: |
           # Later lines take PATH precedence: rustup's cargo must win over
@@ -77,6 +98,15 @@ jobs:
         run: cargo check -p revenuecat-rs --target aarch64-linux-android
       - name: Tauri plugin (mobile cfg) on Android target
         run: cargo check -p tauri-plugin-revenuecat --target aarch64-linux-android
+      - name: Generate the Android test host
+        working-directory: demo/tauri-app/src-tauri
+        run: npx --yes @tauri-apps/cli@2.12.2 android init --ci --skip-targets-install
+      - name: Kotlin bridge unit tests + lint
+        working-directory: demo/tauri-app/src-tauri/gen/android
+        run: >-
+          ./gradlew
+          :tauri-plugin-revenuecat:testDebugUnitTest
+          :tauri-plugin-revenuecat:lintDebug
 
   audit:
     name: Dependency audit (cargo-deny)

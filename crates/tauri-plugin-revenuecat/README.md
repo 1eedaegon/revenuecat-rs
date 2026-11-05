@@ -3,10 +3,11 @@
 [![npm](https://img.shields.io/npm/v/tauri-plugin-revenuecat)](https://www.npmjs.com/package/tauri-plugin-revenuecat)
 [![crates.io](https://img.shields.io/crates/v/tauri-plugin-revenuecat)](https://crates.io/crates/tauri-plugin-revenuecat)
 
-Tauri 2 mobile plugin that bridges **StoreKit 2** (iOS) and **Play Billing**
+Tauri 2.12+ mobile plugin that bridges **StoreKit 2** (iOS) and **Play Billing**
 (Android) into the [`revenuecat-rs`](https://crates.io/crates/revenuecat-rs)
 crate's `StoreBilling` seam, and exposes the SDK to the webview as a typed
-TypeScript package. Protocol-compatible with the official RevenueCat SDKs.
+TypeScript package. It is a feature-scoped direct port against the reviewed
+RevenueCat baselines, not a claim of complete native SDK or UI parity.
 
 For the full SDK surface, model reference, and desktop story, see the
 [project README](https://github.com/1eedaegon/revenuecat-rs#readme).

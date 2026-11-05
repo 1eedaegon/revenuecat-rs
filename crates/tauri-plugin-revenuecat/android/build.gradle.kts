@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "app.tauri.revenuecat"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
@@ -29,5 +29,7 @@ dependencies {
     // The base (Java) artifact, NOT billing-ktx: the ktx module ships Kotlin
     // 2.1 metadata, which breaks consumers on Tauri's default Kotlin 1.9
     // template, and this plugin only uses the callback APIs anyway.
-    implementation("com.android.billingclient:billing:8.0.0")
+    implementation("com.android.billingclient:billing:9.1.0")
+
+    testImplementation(kotlin("test"))
 }

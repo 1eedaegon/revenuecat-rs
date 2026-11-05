@@ -1,9 +1,7 @@
 const COMMANDS: &[&str] = &[
-    // Native store bridge, invoked internally over the mobile plugin channel.
-    "query_products",
-    "purchase",
-    "query_purchases",
-    "finish_transaction",
+    // Required by @tauri-apps/api addPluginListener for native events.
+    "register_listener",
+    "remove_listener",
     // App-facing SDK commands, registered in the invoke handler.
     "configure",
     "session_info",
@@ -11,6 +9,8 @@ const COMMANDS: &[&str] = &[
     "get_customer_info",
     "purchase_package",
     "restore",
+    "sync_pending_purchases",
+    "sync_purchases",
     "log_in",
     "log_out",
     "set_email",

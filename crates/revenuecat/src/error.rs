@@ -150,7 +150,7 @@ impl Error {
 
 impl From<reqwest::Error> for Error {
     fn from(err: reqwest::Error) -> Self {
-        Self::with_underlying(ErrorCode::NetworkError, err.to_string())
+        Self::with_underlying(ErrorCode::NetworkError, err.without_url().to_string())
     }
 }
 
@@ -171,11 +171,14 @@ pub(crate) fn map_backend_code(code: i64) -> ErrorCode {
         7898..=7901 => ErrorCode::StoreProblemError, // gateway setup errors
         7102 => ErrorCode::ReceiptAlreadyInUseError, // cannot transfer purchase
         7103 => ErrorCode::InvalidReceiptError,      // invalid receipt token
-        7104 | 7110 | 7226 | 7234 => ErrorCode::UnexpectedBackendResponseError,
-        7105 | 7106 | 7814 | 7849 | 7853 | 7877 | 7878 => ErrorCode::PurchaseInvalidError,
-        7107 | 7224 | 7225 | 7967 => ErrorCode::InvalidCredentialsError,
+        7104 | 7110 | 7114 | 7226 | 7234 => ErrorCode::UnexpectedBackendResponseError,
+        7105 | 7106 | 7814 | 7849 | 7853 | 7870 | 7877 | 7878 | 8139 | 8140 => {
+            ErrorCode::PurchaseInvalidError
+        }
+        7107 | 7224 | 7225 | 7967 | 7981 => ErrorCode::InvalidCredentialsError,
+        7712 => ErrorCode::InvalidReceiptError,
         7220 | 7256 => ErrorCode::InvalidAppUserIdError, // empty / invalid app user id
-        7230 | 7255 => ErrorCode::ConfigurationError,    // invalid package name / alias
+        7230 | 7255 | 8077 => ErrorCode::ConfigurationError, // invalid package name / alias
         7232 => ErrorCode::IneligibleError,              // ineligible for promo offer
         7259 => ErrorCode::CustomerInfoError,            // subscriber not found
         7263 | 7264 => ErrorCode::InvalidSubscriberAttributesError,
@@ -183,6 +186,7 @@ pub(crate) fn map_backend_code(code: i64) -> ErrorCode {
         7651 => ErrorCode::PaymentPendingError, // payment not complete
         7662 => ErrorCode::UnsupportedError,    // product ids malformed
         7772 | 7852 => ErrorCode::ProductAlreadyPurchasedError,
+        8172 | 8174 => ErrorCode::StoreProblemError,
         _ => ErrorCode::UnknownBackendError,
     }
 }
@@ -201,6 +205,20 @@ mod tests {
             ErrorCode::ProductAlreadyPurchasedError
         );
         assert_eq!(map_backend_code(9999), ErrorCode::UnknownBackendError);
+
+        for (backend_code, expected) in [
+            (7114, ErrorCode::UnexpectedBackendResponseError),
+            (7712, ErrorCode::InvalidReceiptError),
+            (7870, ErrorCode::PurchaseInvalidError),
+            (7981, ErrorCode::InvalidCredentialsError),
+            (8077, ErrorCode::ConfigurationError),
+            (8139, ErrorCode::PurchaseInvalidError),
+            (8140, ErrorCode::PurchaseInvalidError),
+            (8172, ErrorCode::StoreProblemError),
+            (8174, ErrorCode::StoreProblemError),
+        ] {
+            assert_eq!(map_backend_code(backend_code), expected);
+        }
     }
 
     #[test]
@@ -208,5 +226,22 @@ mod tests {
         let error = Error::from_backend(7263, "Some attributes could not be saved.");
         assert_eq!(error.code, ErrorCode::InvalidSubscriberAttributesError);
         assert_eq!(error.backend_code, Some(7263));
+    }
+
+    #[tokio::test]
+    async fn network_error_underlying_cause_excludes_the_request_url() {
+        let request_error = reqwest::Client::new()
+            .get("http://127.0.0.1:0/private-user?access_token=query-secret")
+            .send()
+            .await
+            .unwrap_err();
+        assert!(request_error.url().is_some());
+
+        let error = Error::from(request_error);
+        let underlying = error.underlying.unwrap();
+
+        assert!(!underlying.contains("private-user"));
+        assert!(!underlying.contains("query-secret"));
+        assert!(!underlying.contains("127.0.0.1"));
     }
 }

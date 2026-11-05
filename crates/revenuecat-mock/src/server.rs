@@ -475,11 +475,14 @@ async fn post_receipts(
     ensure_subscriber(&state, &app_user_id);
     grant_product(&state, &app_user_id, &product, &fetch_token);
 
-    (
-        StatusCode::OK,
-        Json(subscriber_envelope(&state, &app_user_id)),
-    )
-        .into_response()
+    let mut response = subscriber_envelope(&state, &app_user_id);
+    response["purchased_products"] = json!({
+        product.identifier.clone(): {
+            "should_consume": product.product_type == "consumable"
+        }
+    });
+
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 /// Records a purchase of `product` on the subscriber, shared by the receipts

@@ -6,6 +6,7 @@ name: iOS targets
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -28,3 +29,13 @@ jobs:
         run: cargo check -p tauri-plugin-revenuecat --target aarch64-apple-ios
       - name: Tauri plugin on iOS simulator target
         run: cargo check -p tauri-plugin-revenuecat --target aarch64-apple-ios-sim
+      - name: Swift StoreKit bridge unit tests
+        working-directory: crates/tauri-plugin-revenuecat/ios
+        run: |
+          simulator_id=$(xcrun simctl list devices available -j | \
+            jq -r 'first(.devices[][] | select(.name | startswith("iPhone")) | .udid) // empty')
+          test -n "$simulator_id"
+          xcodebuild \
+            -scheme tauri-plugin-revenuecat \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            test

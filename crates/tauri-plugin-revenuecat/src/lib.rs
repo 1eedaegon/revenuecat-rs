@@ -56,6 +56,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get_customer_info,
             commands::purchase_package,
             commands::restore,
+            commands::sync_pending_purchases,
+            commands::sync_purchases,
             commands::log_in,
             commands::log_out,
             commands::set_email,

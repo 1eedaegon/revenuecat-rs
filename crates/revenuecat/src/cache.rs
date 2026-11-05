@@ -18,8 +18,8 @@ struct CachedEntry<T> {
 pub(crate) struct DeviceCache {
     ttl: Duration,
     customer_info: Mutex<HashMap<String, CachedEntry<CustomerInfo>>>,
-    offerings: Mutex<Option<CachedEntry<Offerings>>>,
-    virtual_currencies: Mutex<Option<CachedEntry<VirtualCurrencies>>>,
+    offerings: Mutex<HashMap<String, CachedEntry<Offerings>>>,
+    virtual_currencies: Mutex<HashMap<String, CachedEntry<VirtualCurrencies>>>,
 }
 
 impl DeviceCache {
@@ -27,8 +27,8 @@ impl DeviceCache {
         Self {
             ttl,
             customer_info: Mutex::new(HashMap::new()),
-            offerings: Mutex::new(None),
-            virtual_currencies: Mutex::new(None),
+            offerings: Mutex::new(HashMap::new()),
+            virtual_currencies: Mutex::new(HashMap::new()),
         }
     }
 
@@ -60,36 +60,51 @@ impl DeviceCache {
             .remove(app_user_id);
     }
 
-    pub fn cached_offerings(&self) -> Option<(Offerings, bool)> {
+    pub fn cached_offerings(&self, app_user_id: &str) -> Option<(Offerings, bool)> {
         let guard = self.offerings.lock().expect("cache lock poisoned");
         guard
-            .as_ref()
+            .get(app_user_id)
             .map(|entry| (entry.value.clone(), entry.stored_at.elapsed() > self.ttl))
     }
 
-    pub fn store_offerings(&self, offerings: &Offerings) {
-        *self.offerings.lock().expect("cache lock poisoned") = Some(CachedEntry {
-            value: offerings.clone(),
-            stored_at: Instant::now(),
-        });
+    pub fn store_offerings(&self, app_user_id: &str, offerings: &Offerings) {
+        self.offerings.lock().expect("cache lock poisoned").insert(
+            app_user_id.to_owned(),
+            CachedEntry {
+                value: offerings.clone(),
+                stored_at: Instant::now(),
+            },
+        );
     }
 
-    pub fn cached_virtual_currencies(&self) -> Option<(VirtualCurrencies, bool)> {
+    pub fn cached_virtual_currencies(
+        &self,
+        app_user_id: &str,
+    ) -> Option<(VirtualCurrencies, bool)> {
         let guard = self.virtual_currencies.lock().expect("cache lock poisoned");
         guard
-            .as_ref()
+            .get(app_user_id)
             .map(|entry| (entry.value.clone(), entry.stored_at.elapsed() > self.ttl))
     }
 
-    pub fn store_virtual_currencies(&self, currencies: &VirtualCurrencies) {
-        *self.virtual_currencies.lock().expect("cache lock poisoned") = Some(CachedEntry {
-            value: currencies.clone(),
-            stored_at: Instant::now(),
-        });
+    pub fn store_virtual_currencies(&self, app_user_id: &str, currencies: &VirtualCurrencies) {
+        self.virtual_currencies
+            .lock()
+            .expect("cache lock poisoned")
+            .insert(
+                app_user_id.to_owned(),
+                CachedEntry {
+                    value: currencies.clone(),
+                    stored_at: Instant::now(),
+                },
+            );
     }
 
-    pub fn invalidate_virtual_currencies(&self) {
-        *self.virtual_currencies.lock().expect("cache lock poisoned") = None;
+    pub fn invalidate_virtual_currencies(&self, app_user_id: &str) {
+        self.virtual_currencies
+            .lock()
+            .expect("cache lock poisoned")
+            .remove(app_user_id);
     }
 
     /// Drops everything — used on identity changes (logIn/logOut).
@@ -98,8 +113,11 @@ impl DeviceCache {
             .lock()
             .expect("cache lock poisoned")
             .clear();
-        *self.offerings.lock().expect("cache lock poisoned") = None;
-        *self.virtual_currencies.lock().expect("cache lock poisoned") = None;
+        self.offerings.lock().expect("cache lock poisoned").clear();
+        self.virtual_currencies
+            .lock()
+            .expect("cache lock poisoned")
+            .clear();
     }
 }
 
@@ -159,37 +177,61 @@ mod tests {
         // Arrange: every cache slot populated.
         let cache = DeviceCache::new(Duration::from_secs(300));
         cache.store_customer_info("a", &customer_info("a"));
-        cache.store_offerings(&crate::models::Offerings {
-            all: Default::default(),
-            current_offering_id: None,
-        });
-        cache.store_virtual_currencies(&VirtualCurrencies {
-            all: [(
-                "GLD".to_owned(),
-                VirtualCurrency {
-                    balance: 1,
-                    code: "GLD".into(),
-                    name: "Gold".into(),
-                    description: None,
-                },
-            )]
-            .into(),
-        });
+        cache.store_offerings(
+            "a",
+            &crate::models::Offerings {
+                all: Default::default(),
+                current_offering_id: None,
+            },
+        );
+        cache.store_virtual_currencies(
+            "a",
+            &VirtualCurrencies {
+                all: [(
+                    "GLD".to_owned(),
+                    VirtualCurrency {
+                        balance: 1,
+                        code: "GLD".into(),
+                        name: "Gold".into(),
+                        description: None,
+                    },
+                )]
+                .into(),
+            },
+        );
 
         // Act
         cache.clear();
 
         // Assert
         assert!(cache.cached_customer_info("a").is_none());
-        assert!(cache.cached_offerings().is_none());
-        assert!(cache.cached_virtual_currencies().is_none());
+        assert!(cache.cached_offerings("a").is_none());
+        assert!(cache.cached_virtual_currencies("a").is_none());
     }
 
     #[test]
     fn virtual_currencies_report_staleness() {
         let cache = DeviceCache::new(Duration::ZERO);
-        cache.store_virtual_currencies(&VirtualCurrencies::default());
-        let (_, stale) = cache.cached_virtual_currencies().unwrap();
+        cache.store_virtual_currencies("a", &VirtualCurrencies::default());
+        let (_, stale) = cache.cached_virtual_currencies("a").unwrap();
         assert!(stale);
+    }
+
+    #[test]
+    fn offerings_and_virtual_currencies_are_isolated_per_user() {
+        let cache = DeviceCache::new(Duration::from_secs(300));
+        let offerings = crate::models::Offerings {
+            all: Default::default(),
+            current_offering_id: Some("a-offering".into()),
+        };
+        let currencies = VirtualCurrencies::default();
+
+        cache.store_offerings("a", &offerings);
+        cache.store_virtual_currencies("a", &currencies);
+
+        assert!(cache.cached_offerings("a").is_some());
+        assert!(cache.cached_virtual_currencies("a").is_some());
+        assert!(cache.cached_offerings("b").is_none());
+        assert!(cache.cached_virtual_currencies("b").is_none());
     }
 }

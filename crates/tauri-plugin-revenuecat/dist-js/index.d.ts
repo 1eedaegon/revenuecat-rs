@@ -68,6 +68,12 @@ export interface Offering {
     paywall_components: PaywallComponents | null;
 }
 export interface Offerings {
+    /**
+     * Raw Rust IPC field retained on SDK results. Optional so 1.x callers that
+     * construct `{ all, current }` values remain source compatible.
+     */
+    current_offering_id?: string | null;
+    /** Current offering resolved from `current_offering_id`, matching SDK ergonomics. */
     current: Offering | null;
     all: Record<string, Offering>;
 }
@@ -181,6 +187,8 @@ export interface CustomerInfo {
     entitlements: EntitlementInfos;
     subscriptions: Record<string, SubscriptionInfo>;
     non_subscription_transactions: NonSubscriptionTransaction[];
+    /** Unmodified backend response for additive fields introduced upstream. */
+    raw?: unknown;
 }
 export interface StoreTransaction {
     purchase_token: string;
@@ -204,6 +212,11 @@ export interface ConfigureOptions {
     entitlementVerificationMode?: "disabled" | "informational" | "enforced";
     /** Base64 Ed25519 root key, for a custom/test signing chain. */
     verificationRootKey?: string;
+    /**
+     * Allows a Test Store key in an iOS/Android release build. Dangerous:
+     * enable only for a controlled test build, never for a production app.
+     */
+    dangerouslyAllowTestStoreInReleaseBuilds?: boolean;
 }
 export interface SessionInfo {
     configured: boolean;
@@ -215,6 +228,10 @@ export interface SessionInfo {
 export interface LoginResult {
     customerInfo: CustomerInfo;
     created: boolean;
+}
+export declare const NATIVE_SYNC_ERROR_EVENT = "revenuecat:native-sync-error";
+export interface NativeSyncError {
+    message: string;
 }
 /** Configure the SDK. On mobile, `appl_`/`goog_` keys wire the native store. */
 export declare function configure(options: ConfigureOptions): Promise<SessionInfo>;
@@ -246,3 +263,5 @@ export declare function manageSubscriptions(): Promise<string | null>;
  * Returns an unlisten function.
  */
 export declare function onCustomerInfoUpdated(handler: (info: CustomerInfo) => void): Promise<UnlistenFn>;
+/** Observe failures from automatic native transaction synchronization. */
+export declare function onNativeSyncError(handler: (error: NativeSyncError) => void): Promise<UnlistenFn>;

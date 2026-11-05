@@ -23,16 +23,15 @@ permissions:
 
 jobs:
   watch:
-    runs-on: [self-hosted, macOS, ARM64]
+    # This job only needs bash, gh and jq. Keeping it on the self-hosted
+    # mobile build runner made protocol tracking stop whenever that machine
+    # was offline. Public repositories have hosted Linux runners available,
+    # so upstream monitoring should not share the native-build bottleneck.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           token: ${{ secrets.PAT || github.token }}
-      - name: Runner PATH
-        run: |
-          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
-
       - name: Compare upstream releases
         id: compare
         env:
@@ -45,9 +44,12 @@ jobs:
           echo "" >> "$summary"
 
           declare -A protocol_paths=(
-            [purchases-ios]="Sources/Networking Sources/Security"
-            [purchases-android]="purchases/src/main/kotlin/com/revenuecat/purchases/common"
-            [purchases-js]="src/networking src/entities"
+            # Models, purchase lifecycle code and networking all affect this
+            # direct port. Narrower legacy filters missed StoreKit/Play and
+            # public-model changes outside the networking directories.
+            [purchases-ios]="Sources"
+            [purchases-android]="purchases/src/main/kotlin/com/revenuecat/purchases"
+            [purchases-js]="src"
           )
 
           for repo in purchases-ios purchases-android purchases-js; do
@@ -59,10 +61,17 @@ jobs:
               echo "" >> "$summary"
               echo "- Release notes: https://github.com/RevenueCat/$repo/releases/tag/$latest" >> "$summary"
               echo "- Full diff: https://github.com/RevenueCat/$repo/compare/$pinned...$latest" >> "$summary"
-              # List changed files in the protocol-relevant paths so the
-              # review focuses on wire-format impact.
-              files=$(gh api "repos/RevenueCat/$repo/compare/$pinned...$latest" \
-                --jq '.files[].filename' 2>/dev/null | head -200 || true)
+              # Fetch tag trees without blobs so this sees every changed path;
+              # GitHub's compare API truncates the file list at 300 entries.
+              repo_dir=$(mktemp -d)
+              git -C "$repo_dir" init --quiet
+              git -C "$repo_dir" remote add origin "https://github.com/RevenueCat/$repo.git"
+              git -C "$repo_dir" -c protocol.version=2 fetch --quiet --filter=blob:none \
+                --depth=1 origin \
+                "refs/tags/$pinned:refs/tags/pinned" \
+                "refs/tags/$latest:refs/tags/latest"
+              files=$(git -C "$repo_dir" diff --name-only refs/tags/pinned refs/tags/latest)
+              rm -rf -- "$repo_dir"
               relevant=""
               for prefix in ${protocol_paths[$repo]}; do
                 relevant+=$(echo "$files" | grep "^$prefix" || true)$'\n'
@@ -71,7 +80,7 @@ jobs:
               if [ -n "$relevant" ]; then
                 echo "- Protocol-relevant files changed:" >> "$summary"
                 echo '```' >> "$summary"
-                echo "$relevant" | head -40 >> "$summary"
+                echo "$relevant" | sed -n '1,40p' >> "$summary"
                 echo '```' >> "$summary"
               else
                 echo "- No changes under protocol-relevant paths." >> "$summary"
