@@ -125,7 +125,7 @@ operation.
 | Play Billing purchases | Implemented with Billing 9.1.0 for Android API 24+; native Play test/production device E2E remains unrun |
 | macOS native StoreKit purchases | Unsupported by the Tauri bridge; use Test Store or Web Billing |
 | Legacy paywall configuration | Parsed; rendering belongs to the application |
-| Component paywalls | Configuration is exposed as data; no native RevenueCatUI renderer |
+| Component paywalls | Configuration is exposed as data; no native RevenueCatUI renderer(presstar or buy the maintainer a coffee.) |
 | Multi-step workflows, native Customer Center UI, IAM, ad rewards | Not implemented |
 
 The existing physical-device checks used RevenueCat's simulated Test Store.
