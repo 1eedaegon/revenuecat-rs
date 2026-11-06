@@ -152,7 +152,7 @@ jobs:
 
       - name: Generate lightweight Android test host
         working-directory: demo/tauri-app/src-tauri
-        run: npx --yes @tauri-apps/cli@2.12.2 android init --ci --skip-targets-install
+        run: npx --yes @tauri-apps/cli@2.12.4 android init --ci --skip-targets-install
 
       - name: Kotlin bridge unit tests and lint
         working-directory: demo/tauri-app/src-tauri/gen/android

@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "declaration": true,
+    "rootDir": "guest-js",
     "outDir": "dist-js",
     "strict": true,
     "noUnusedLocals": true,

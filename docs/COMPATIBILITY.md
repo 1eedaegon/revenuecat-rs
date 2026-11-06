@@ -51,7 +51,7 @@ new capability still needs an explicit implementation and conformance test.
 | Layer | Compatibility floor / build baseline | Policy |
 |---|---|---|
 | Rust | Rust 1.90, edition 2021 | Keep the declared MSRV; new public behavior is additive throughout 1.x |
-| TypeScript | TypeScript 5.4+, Tauri API 2.12+ | Preserve existing command names and option fields; new options are optional |
+| TypeScript | TypeScript 5.4+, Tauri API 2.12.4+ | Preserve existing command names and option fields; new options are optional |
 | iOS / iPadOS | Swift tools 5.5, iOS 15+ | StoreKit 2 direct bridge; no dependency on `purchases-ios` |
 | Android | API 24+, Java 17, compile SDK 36 | Play Billing 9.1.0 direct bridge; consumer target SDK remains app-controlled |
 | macOS desktop | Rust core only | Test Store and Web Billing work; the native StoreKit purchase bridge is not wired into Tauri on macOS |

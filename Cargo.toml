@@ -42,7 +42,7 @@ rand = "0.10.3"
 sha2 = "0.11"
 log = "0.4"
 percent-encoding = "2"
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
 # Bundled Mozilla roots so TLS works without the platform verifier — which on
 # Android needs a JNI context the app can't easily provide.
 rustls = "0.23.46"
