@@ -16,7 +16,7 @@ name = "revenuecat_tauri_demo"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
 # The SDK runs behind the plugin now, so the plugin is always registered. Its
@@ -27,8 +27,8 @@ revenuecat-mock = { workspace = true }
 tauri-plugin-revenuecat = { path = "../../../crates/tauri-plugin-revenuecat" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { version = "2", features = [] }
+tauri = { version = "2.12.5", features = [] }
 tokio = { workspace = true }
 
 [dev-dependencies]
-tauri = { version = "2", features = ["test"] }
+tauri = { version = "2.12.5", features = ["test"] }
