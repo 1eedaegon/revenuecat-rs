@@ -10,16 +10,37 @@
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use serde_json::{json, Value};
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, MockRuntime, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
-use tauri::{App, WebviewWindow, WebviewWindowBuilder};
+use tauri::{App, Manager, WebviewWindow, WebviewWindowBuilder};
+
+static NEXT_TEST_APP_ID: AtomicU64 = AtomicU64::new(0);
+
+struct IsolatedDataDir(PathBuf);
+
+impl Drop for IsolatedDataDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 fn build_app() -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
+    let app_id = NEXT_TEST_APP_ID.fetch_add(1, Ordering::Relaxed);
+    let data_dir = std::env::temp_dir().join(format!(
+        "revenuecat-tauri-demo-test-{}-{app_id}",
+        std::process::id()
+    ));
+    let mut context: tauri::Context<MockRuntime> = tauri::generate_context!();
+    context.config_mut().identifier = data_dir.to_string_lossy().into_owned();
     let app = revenuecat_tauri_demo::build(mock_builder())
-        .build(tauri::generate_context!())
+        .build(context)
         .unwrap();
+    assert!(app.manage(IsolatedDataDir(data_dir)));
     let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .unwrap();
@@ -87,6 +108,18 @@ fn configure_selects_the_embedded_mock_backend() {
         .as_str()
         .unwrap()
         .starts_with("$RCAnonymousID:"));
+}
+
+#[test]
+fn mock_apps_do_not_share_persisted_identity() {
+    let (_first_app, first_webview) = build_app();
+    configure_mock(&first_webview, Some("first-user"));
+
+    let (_second_app, second_webview) = build_app();
+    let session = configure_mock(&second_webview, None);
+
+    assert_eq!(session["isAnonymous"], true);
+    assert_ne!(session["appUserId"], "first-user");
 }
 
 #[test]

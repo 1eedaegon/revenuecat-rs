@@ -115,7 +115,7 @@ pub struct PurchaseOption {
     pub discount: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PricingPhase {
     /// ISO 8601 duration, e.g. `"P1M"`.
     #[serde(default)]
@@ -135,7 +135,7 @@ fn default_cycle_count() -> i64 {
 // ---------------------------------------------------------------------------
 
 /// Store-agnostic product, mirroring `StoreProduct` in the official SDKs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StoreProduct {
     pub identifier: String,
     pub product_type: ProductType,
@@ -148,6 +148,86 @@ pub struct StoreProduct {
     pub trial: Option<PricingPhase>,
     /// Introductory-price phase, when present.
     pub intro_price: Option<PricingPhase>,
+}
+
+/// A store product lookup from an Offering package.
+///
+/// Multiple Google Play packages may share one product ID while selecting
+/// different base plans. This additive query type lets native bridges return
+/// the localized product for the exact plan without changing `StoreProduct`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct StoreProductQuery {
+    product_id: String,
+    platform_product_plan_identifier: Option<String>,
+}
+
+impl StoreProductQuery {
+    pub fn new(product_id: impl Into<String>) -> Self {
+        Self {
+            product_id: product_id.into(),
+            platform_product_plan_identifier: None,
+        }
+    }
+
+    pub fn for_plan(
+        product_id: impl Into<String>,
+        platform_product_plan_identifier: impl Into<String>,
+    ) -> Self {
+        Self {
+            product_id: product_id.into(),
+            platform_product_plan_identifier: Some(platform_product_plan_identifier.into()),
+        }
+    }
+
+    pub fn product_id(&self) -> &str {
+        &self.product_id
+    }
+
+    pub fn platform_product_plan_identifier(&self) -> Option<&str> {
+        self.platform_product_plan_identifier.as_deref()
+    }
+}
+
+/// A localized store product matched to an optional Offering base plan.
+#[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
+pub struct StoreProductResult {
+    product: StoreProduct,
+    platform_product_plan_identifier: Option<String>,
+}
+
+impl StoreProductResult {
+    /// Adapts a product returned by the legacy product-ID-only query.
+    pub fn new(product: StoreProduct) -> Self {
+        Self {
+            product,
+            platform_product_plan_identifier: None,
+        }
+    }
+
+    /// Associates a product with the exact Google Play base plan it describes.
+    pub fn for_plan(
+        product: StoreProduct,
+        platform_product_plan_identifier: impl Into<String>,
+    ) -> Self {
+        Self {
+            product,
+            platform_product_plan_identifier: Some(platform_product_plan_identifier.into()),
+        }
+    }
+
+    pub fn product(&self) -> &StoreProduct {
+        &self.product
+    }
+
+    pub fn into_product(self) -> StoreProduct {
+        self.product
+    }
+
+    pub fn platform_product_plan_identifier(&self) -> Option<&str> {
+        self.platform_product_plan_identifier.as_deref()
+    }
 }
 
 impl StoreProduct {

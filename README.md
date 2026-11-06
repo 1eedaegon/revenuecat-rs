@@ -5,9 +5,15 @@
 [![npm](https://img.shields.io/npm/v/tauri-plugin-revenuecat?label=npm%20·%20tauri-plugin-revenuecat)](https://www.npmjs.com/package/tauri-plugin-revenuecat)
 [![CI](https://github.com/1eedaegon/revenuecat-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/1eedaegon/revenuecat-rs/actions/workflows/ci.yml)
 
-**RevenueCat SDK for Rust**, protocol-compatible with the official
-[purchases-ios], [purchases-android], and [purchases-js] SDKs (all MIT), down
-to the same wire formats.
+**RevenueCat SDK for Rust**, implemented as an independent direct port of the
+wire and purchase-lifecycle behavior in the official [purchases-ios],
+[purchases-android], and [purchases-js] SDKs (all MIT). Compatibility is tracked
+per feature; this crate does not link or claim full UI parity with those SDKs.
+See the [compatibility policy and current scope](docs/COMPATIBILITY.md).
+
+Reviewed compatibility baseline (2026-11-05): purchases-ios **5.102.1**,
+purchases-android **11.1.0**, purchases-js **1.74.0**, and Google Play Billing
+Library **9.1.0**. These are review targets, not linked SDK dependencies.
 
 A `test_` (Test Store) key needs **no native store**: purchases are simulated
 end to end, so the SDK, its tests, and the Tauri demo all run on desktop and
@@ -66,6 +72,14 @@ const unlisten = await onCustomerInfoUpdated((info) => {
 });
 ```
 
+This standard guest-JS path owns lifecycle recovery: it persists the effective
+`appUserId` and updates it after `logIn`/`logOut`. For real-store sessions, it
+schedules native transaction sync at configure, window resume/focus, and native
+transaction events. Play performs a full active-purchase recovery at configure
+and pending-only sync afterward; StoreKit uses unfinished transactions. Omitting
+`appUserId` therefore reuses one persisted anonymous ID across launches instead
+of creating a new subscriber every time.
+
 #### Track 2 — Rust (you own the SDK)
 
 Keep the SDK logic in Rust and expose your own commands; the plugin supplies the
@@ -75,12 +89,14 @@ Run: `cargo add revenuecat-rs`
 
 ```rust
 .setup(|app| {
-    let mut builder = revenuecat::Configuration::builder("appl_or_test_KEY");
-    // Native store on mobile; Err on desktop (a `test_` key needs no store).
-    if let Ok(billing) = tauri_plugin_revenuecat::store_billing(app.handle()) {
-        builder = builder.store_billing(billing);
-    }
-    app.manage(revenuecat::Purchases::configure(builder.build()?)?);
+    let billing = tauri_plugin_revenuecat::store_billing(app.handle())?;
+    // Replace this placeholder with an ID loaded from your durable app state.
+    let stable_app_user_id = "your-backend-user-id";
+    let config = revenuecat::Configuration::builder("appl_or_goog_KEY")
+        .app_user_id(stable_app_user_id)
+        .store_billing(billing)
+        .build()?;
+    app.manage(revenuecat::Purchases::configure(config)?);
     Ok(())
 })
 
@@ -99,6 +115,14 @@ async fn buy(
 Same crate, two faces: `revenuecat-rs` (the crate) stays pure Rust; the plugin
 adds the TypeScript track on top.
 
+The Rust-owned track deliberately supplies only the native `StoreBilling`
+bridge. Your app must durably persist and pass `app_user_id` (including the new
+value after `log_in`/`log_out`) and call `sync_pending_purchases()` at startup
+and on foreground transitions. Native transaction events are not automatically
+wired to a Rust-owned `Purchases` instance. Reserve `sync_purchases()` for an
+explicit one-time/full recovery over the platform's full purchase set; normal
+lifecycle recovery should stay pending-only. See the
+[compatibility guide](docs/COMPATIBILITY.md#ownership-and-recovery-paths).
 
 The plugin supports two ways to use RevenueCat. Both register the plugin the
 same way; they differ in **who owns the SDK**.
@@ -287,9 +311,10 @@ let purchases = Purchases::configure(
 )?;
 ```
 
-`crates/tauri-plugin-revenuecat` implements this over StoreKit 2 (Swift) and
-Play Billing (Kotlin) for Tauri mobile apps.
-
+`crates/tauri-plugin-revenuecat` implements this directly over StoreKit 2
+(Swift) on iOS/iPadOS and Play Billing 9.1.0 (Kotlin) on Android. It does not
+embed the official RevenueCat native SDKs. The Swift package is iOS-only;
+macOS apps must use the Rust Test Store or Web Billing paths.
 
 ## Workspace
 
@@ -314,8 +339,10 @@ Enter an API key on the setup screen to pick the backend:
 - `test_…` → real RevenueCat backend, simulated Test Store (no store account);
 - `appl_…` / `goog_…` → StoreKit 2 / Play Billing (mobile only).
 
-**Show paywall** renders the dashboard paywall from `Offering.paywall` in the
-webview and buys the selected package, the same config a native SDK would draw.
+**Show paywall** renders the legacy dashboard paywall from `Offering.paywall`
+in the webview and buys the selected package. Component configuration is also
+exposed as data, but the demo is not a RevenueCatUI or multi-step workflow
+renderer.
 
 There's also a CLI walkthrough of the same flow:
 
@@ -326,22 +353,25 @@ cargo run -p revenuecat-rs --example test_store_flow
 ## Testing
 
 ```sh
-cargo test --workspace          # unit + integration + Tauri IPC (115+ tests)
+cargo test --workspace --all-targets    # unit + integration + Tauri IPC
 cargo clippy --workspace --all-targets   # unwrap is denied in lib code
-cargo deny check                # advisories / licenses
+cargo deny check advisories licenses bans sources
 ```
 
 The integration suite runs the real SDK stack against `revenuecat-mock` and
 asserts exact wire behavior: request paths, headers, receipt-body fields,
 ETag 304 replay, and full Ed25519 verification.
 
+See [the test strategy](docs/TESTING.md) for the TypeScript, Kotlin, and Swift
+commands; the payment/recovery test matrix; and the App Store/Play device test
+checklist.
+
 **Device-verified:** the Tauri demo has been run on a physical **iPhone 16
 (iOS)** and **Galaxy S23 (Android)**, each completing a purchase end to end
-against the real RevenueCat **Test Store** backend (`test_` SDK key). The
-crate itself is platform-agnostic Rust HTTP; the device runs confirm it works
-in the mobile runtime (TLS via bundled webpki roots, no platform-verifier JNI
-dependency). Native-store (StoreKit 2 / Play Billing) sandbox purchases still
-need paid store accounts.
+against RevenueCat's simulated **Test Store** (`test_` SDK key). Those runs
+verify the mobile Tauri/HTTP path (TLS via bundled webpki roots, no
+platform-verifier JNI dependency); they do not exercise StoreKit or Play
+Billing. Real App Store sandbox and Play test-track device E2E remains unrun.
 
 ## Supported platforms & requirements
 
@@ -361,20 +391,37 @@ Tauri mobile app.
 | Store account | **none** with a `test_` key (simulated Test Store); desktop + CI included |
 
 **Native store bridge (`tauri-plugin-revenuecat`)**: only for real StoreKit 2 /
-Play Billing purchases (`appl_`/`goog_` keys, mobile). The OS
-floors here match Apple's and Google's own:
+Play Billing purchases (`appl_`/`goog_` keys) on iOS/iPadOS and Android. The
+platform floors are:
 
 | Platform | Floor | Why |
 |---|---|---|
 | iOS / iPadOS | **15.0+** | StoreKit 2 (Swift-concurrency IAP); the plugin is `@available(iOS 15, *)` and rejects older with a clear error |
-| macOS | **12.0+** | StoreKit 2 shipped with the iOS-15 generation |
-| Android | **API 24+ (7.0)** | plugin `minSdk = 24`, Play Billing; Google requires Billing Library **v7+** for new Play submissions (deadline 2026-08-31) |
-| Tauri | **2.x** | mobile runtime + IPC |
+| Android | **API 24+ (7.0)** | plugin `minSdk = 24`, `compileSdk = 36`, Play Billing **9.1.0**; the compile SDK does not raise the consuming app's target SDK |
+| macOS desktop | **Native bridge unsupported** | the Swift plugin target is iOS-only; use Test Store or Web Billing |
+| Tauri | **2.12+** | mobile lifecycle propagation + IPC/plugin listeners used by receipt recovery |
 
-**Verified in CI** (compile checks, self-hosted macOS ARM64 runner):
-`aarch64-apple-ios` (+ simulator) and `aarch64-linux-android`.
+Play callbacks do not include the selected base plan. The bridge serializes
+local flows and correlates known tokens; after posting a novel token, the Rust
+core also compares the exact order ID and backend-confirmed plan, rejecting a
+known earlier plan instead of completing the current callback. Transactions
+from outside the current process still rely on backend-validated
+`CustomerInfo`, never the locally selected offer alone; see the
+[Android correlation limit](docs/COMPATIBILITY.md#android-correlation-limit).
+
+**Native CI targets:** `aarch64-apple-ios` (+ simulator) and
+`aarch64-linux-android`. See the workflow run itself for the current result;
+mock/workspace tests alone do not establish native-store compatibility.
 **Device-verified:** iPhone 16 (iOS) and Galaxy S23 (Android) each completed a
-purchase end to end against the real Test Store backend.
+simulated Test Store purchase. Native App Store/Play device E2E remains unrun.
+
+Mobile release builds reject `test_` keys by default. For a controlled
+release-mode test only, set
+`dangerouslyAllowTestStoreInReleaseBuilds: true` in TypeScript or call
+`.dangerously_allow_test_store_in_release_builds(true)` on the Rust builder.
+This escape hatch can grant test entitlements and must never ship in a
+production configuration. Desktop/server release builds keep Test Store
+enabled for development and CI.
 
 ## Protocol coverage
 

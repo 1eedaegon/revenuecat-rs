@@ -18,8 +18,17 @@
  * ConfigureOptions, LoginResult) are camelCase.
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import {
+  addPluginListener,
+  invoke,
+  type PluginListener,
+} from "@tauri-apps/api/core";
+import {
+  emit,
+  listen,
+  TauriEvent,
+  type UnlistenFn,
+} from "@tauri-apps/api/event";
 
 // -- Enums (string-literal unions matching the serde output) ----------------
 
@@ -112,7 +121,18 @@ export interface Offering {
 }
 
 export interface Offerings {
+  /**
+   * Raw Rust IPC field retained on SDK results. Optional so 1.x callers that
+   * construct `{ all, current }` values remain source compatible.
+   */
+  current_offering_id?: string | null;
+  /** Current offering resolved from `current_offering_id`, matching SDK ergonomics. */
   current: Offering | null;
+  all: Record<string, Offering>;
+}
+
+interface OfferingsWire {
+  current_offering_id: string | null;
   all: Record<string, Offering>;
 }
 
@@ -238,6 +258,8 @@ export interface CustomerInfo {
   entitlements: EntitlementInfos;
   subscriptions: Record<string, SubscriptionInfo>;
   non_subscription_transactions: NonSubscriptionTransaction[];
+  /** Unmodified backend response for additive fields introduced upstream. */
+  raw?: unknown;
 }
 
 export interface StoreTransaction {
@@ -266,6 +288,11 @@ export interface ConfigureOptions {
   entitlementVerificationMode?: "disabled" | "informational" | "enforced";
   /** Base64 Ed25519 root key, for a custom/test signing chain. */
   verificationRootKey?: string;
+  /**
+   * Allows a Test Store key in an iOS/Android release build. Dangerous:
+   * enable only for a controlled test build, never for a production app.
+   */
+  dangerouslyAllowTestStoreInReleaseBuilds?: boolean;
 }
 
 export interface SessionInfo {
@@ -284,12 +311,237 @@ export interface LoginResult {
 // -- Commands ---------------------------------------------------------------
 
 const PLUGIN = "plugin:revenuecat";
+const NATIVE_TRANSACTION_UPDATED_EVENT = "transaction-updated";
+export const NATIVE_SYNC_ERROR_EVENT = "revenuecat:native-sync-error";
+
+export interface NativeSyncError {
+  message: string;
+}
+
+let nativeTransactionListener: Promise<PluginListener> | undefined;
+let nativeLifecycleListeners: Promise<UnlistenFn[]> | undefined;
+let nativeSyncInFlight: Promise<void> | undefined;
+let nativeSyncRequested = false;
+let nativeFullSyncRequested = false;
+let nativeRecoveryRequired = false;
+let explicitPurchaseRequests = 0;
+let nativeRetryTimer: ReturnType<typeof setTimeout> | undefined;
+let nativeRetryIncludeAllOwned = false;
+let nativeRetryDelayMs = 15_000;
+
+const NATIVE_SYNC_RETRY_DELAYS_MS = [0, 750, 3_000] as const;
+const MAX_NATIVE_SYNC_RETRY_DELAY_MS = 15 * 60_000;
+const NATIVE_SYNC_FALLBACK_ERROR_MESSAGE = "Native synchronization failed.";
+
+function nonEmptyErrorMessage(error: unknown): string | undefined {
+  if (typeof error === "string") {
+    return error.trim().length > 0 ? error : undefined;
+  }
+  if (typeof error !== "object" || error === null) return undefined;
+
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(error, "message");
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    const message = descriptor.value;
+    return typeof message === "string" && message.trim().length > 0
+      ? message
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function errorMessage(error: unknown): string {
+  const message = nonEmptyErrorMessage(error);
+  if (message) return message;
+
+  // JSON scalars are safe to expose. Never stringify unknown records because
+  // native error metadata may include credentials, receipts, or user data.
+  if (
+    typeof error === "boolean" ||
+    (typeof error === "number" && Number.isFinite(error))
+  ) {
+    return JSON.stringify(error);
+  }
+  return NATIVE_SYNC_FALLBACK_ERROR_MESSAGE;
+}
+
+async function ensureNativeTransactionListener(): Promise<void> {
+  nativeTransactionListener ??= addPluginListener(
+    "revenuecat",
+    NATIVE_TRANSACTION_UPDATED_EVENT,
+    () => {
+      nativeRecoveryRequired = true;
+      requestNativeSync(false);
+    },
+  ).catch((error) => {
+    nativeTransactionListener = undefined;
+    throw error;
+  });
+  await nativeTransactionListener;
+}
+
+async function installNativeLifecycleListeners(): Promise<UnlistenFn[]> {
+  const results = await Promise.allSettled([
+    listen(TauriEvent.WINDOW_RESUMED, () => {
+      nativeRecoveryRequired = true;
+      requestNativeSync(false);
+    }),
+    listen(TauriEvent.WINDOW_FOCUS, () => {
+      nativeRecoveryRequired = true;
+      requestNativeSync(false);
+    }),
+  ]);
+  const rejected = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (rejected) {
+    await Promise.all(
+      results
+        .filter(
+          (result): result is PromiseFulfilledResult<UnlistenFn> =>
+            result.status === "fulfilled",
+        )
+        .map(({ value: unlisten }) => Promise.resolve(unlisten()).catch(() => undefined)),
+    );
+    throw rejected.reason;
+  }
+  return results.map(
+    (result) => (result as PromiseFulfilledResult<UnlistenFn>).value,
+  );
+}
+
+async function ensureNativeLifecycleListeners(): Promise<void> {
+  nativeLifecycleListeners ??= installNativeLifecycleListeners().catch((error) => {
+    nativeLifecycleListeners = undefined;
+    throw error;
+  });
+  await nativeLifecycleListeners;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function synchronizeNativePurchases(includeAllOwned: boolean): Promise<void> {
+  const command = includeAllOwned
+    ? "sync_purchases"
+    : "sync_pending_purchases";
+  await invoke<CustomerInfo>(`${PLUGIN}|${command}`);
+}
+
+async function synchronizeNativePurchasesWithRetry(
+  includeAllOwned: boolean,
+): Promise<void> {
+  let finalError: unknown;
+  for (const delayMilliseconds of NATIVE_SYNC_RETRY_DELAYS_MS) {
+    if (delayMilliseconds > 0) await wait(delayMilliseconds);
+    try {
+      await synchronizeNativePurchases(includeAllOwned);
+      return;
+    } catch (error) {
+      finalError = error;
+    }
+  }
+  throw finalError;
+}
+
+function scheduleNativeSyncRetry(includeAllOwned: boolean): void {
+  nativeRetryIncludeAllOwned ||= includeAllOwned;
+  if (nativeRetryTimer) return;
+
+  nativeRetryTimer = setTimeout(() => {
+    nativeRetryTimer = undefined;
+    const shouldIncludeAllOwned = nativeRetryIncludeAllOwned;
+    nativeRetryIncludeAllOwned = false;
+    requestNativeSync(shouldIncludeAllOwned);
+  }, nativeRetryDelayMs);
+  nativeRetryDelayMs = Math.min(
+    nativeRetryDelayMs * 2,
+    MAX_NATIVE_SYNC_RETRY_DELAY_MS,
+  );
+}
+
+function recordNativeSyncSuccess(includedAllOwned: boolean): void {
+  const queuedSyncStillRequiresRecovery = nativeSyncRequested;
+  const stillNeedsFullSync =
+    (nativeFullSyncRequested || nativeRetryIncludeAllOwned) &&
+    !includedAllOwned;
+  if (nativeRetryTimer) clearTimeout(nativeRetryTimer);
+  nativeRetryTimer = undefined;
+  nativeRetryIncludeAllOwned = false;
+  nativeRetryDelayMs = 15_000;
+  nativeRecoveryRequired =
+    queuedSyncStillRequiresRecovery || stillNeedsFullSync;
+  if (stillNeedsFullSync) {
+    nativeSyncRequested = true;
+    nativeFullSyncRequested = true;
+  }
+}
+
+async function waitForNativeRecovery(): Promise<void> {
+  if (!nativeRecoveryRequired) return;
+  if (!nativeSyncInFlight) requestNativeSync(false);
+  if (nativeSyncInFlight) await nativeSyncInFlight;
+  if (nativeRecoveryRequired) {
+    throw new Error(
+      "A native purchase still requires synchronization; retry after native sync succeeds.",
+    );
+  }
+}
+
+function requestNativeSync(includeAllOwned: boolean): void {
+  nativeSyncRequested = true;
+  nativeFullSyncRequested ||= includeAllOwned;
+  if (nativeSyncInFlight || explicitPurchaseRequests > 0) return;
+
+  nativeSyncInFlight = (async () => {
+    while (nativeSyncRequested) {
+      const shouldIncludeAllOwned = nativeFullSyncRequested;
+      nativeSyncRequested = false;
+      nativeFullSyncRequested = false;
+      try {
+        await synchronizeNativePurchasesWithRetry(shouldIncludeAllOwned);
+        recordNativeSyncSuccess(shouldIncludeAllOwned);
+      } catch (error) {
+        // Transactions stay unfinished/unacknowledged until a backend post
+        // succeeds. Retry transient failures here, then keep an exponentially
+        // backed-off timer alive while the webview remains running.
+        scheduleNativeSyncRetry(
+          shouldIncludeAllOwned || nativeFullSyncRequested,
+        );
+        nativeSyncRequested = false;
+        nativeFullSyncRequested = false;
+        await emit<NativeSyncError>(NATIVE_SYNC_ERROR_EVENT, {
+          message: errorMessage(error),
+        }).catch(() => undefined);
+        return;
+      }
+    }
+  })().finally(() => {
+    nativeSyncInFlight = undefined;
+    if (nativeSyncRequested) requestNativeSync(nativeFullSyncRequested);
+  });
+}
 
 /** Configure the SDK. On mobile, `appl_`/`goog_` keys wire the native store. */
 export async function configure(
   options: ConfigureOptions,
 ): Promise<SessionInfo> {
-  return await invoke(`${PLUGIN}|configure`, { options });
+  const session = await invoke<SessionInfo>(`${PLUGIN}|configure`, { options });
+  if (session.store === "app store" || session.store === "play store") {
+    await Promise.all([
+      ensureNativeTransactionListener(),
+      ensureNativeLifecycleListeners(),
+    ]);
+    // Play's active-purchase query also recovers acknowledged tokens after a
+    // reinstall or lost sent-token cache. StoreKit can stay pending-only here:
+    // Transaction.updates + unfinished retain every transaction Rust still
+    // needs to post and finish.
+    nativeRecoveryRequired = true;
+    requestNativeSync(session.store === "play store");
+  }
+  return session;
 }
 
 /** Current session (configured?, app user id, anonymous?, store). */
@@ -299,7 +551,14 @@ export async function sessionInfo(): Promise<SessionInfo> {
 
 /** Offerings with their packages and dashboard paywall config. */
 export async function getOfferings(): Promise<Offerings> {
-  return await invoke(`${PLUGIN}|get_offerings`);
+  const offerings = await invoke<OfferingsWire>(`${PLUGIN}|get_offerings`);
+  const currentOfferingId = offerings.current_offering_id;
+  const current =
+    typeof currentOfferingId === "string" &&
+    Object.prototype.hasOwnProperty.call(offerings.all, currentOfferingId)
+      ? (offerings.all[currentOfferingId] ?? null)
+      : null;
+  return { ...offerings, current };
 }
 
 /** The latest customer info (fetched fresh from the backend). */
@@ -311,7 +570,23 @@ export async function getCustomerInfo(): Promise<CustomerInfo> {
 export async function purchasePackage(
   packageId: string,
 ): Promise<PurchaseResult> {
-  return await invoke(`${PLUGIN}|purchase_package`, { packageId });
+  await waitForNativeRecovery();
+  explicitPurchaseRequests += 1;
+  try {
+    return await invoke(`${PLUGIN}|purchase_package`, { packageId });
+  } catch (error) {
+    // A native purchase may have succeeded even if the backend post or finish
+    // failed. Its StoreKit update is deliberately suppressed as part of the
+    // explicit flow, so queue a pending-only recovery before rethrowing.
+    nativeRecoveryRequired = true;
+    requestNativeSync(false);
+    throw error;
+  } finally {
+    explicitPurchaseRequests -= 1;
+    if (explicitPurchaseRequests === 0 && nativeSyncRequested) {
+      requestNativeSync(nativeFullSyncRequested);
+    }
+  }
 }
 
 /** Restore purchases and return the refreshed customer info. */
@@ -321,11 +596,13 @@ export async function restore(): Promise<CustomerInfo> {
 
 /** Identify the user (alias anonymous purchases); `created` is true for a new id. */
 export async function logIn(appUserId: string): Promise<LoginResult> {
+  await waitForNativeRecovery();
   return await invoke(`${PLUGIN}|log_in`, { appUserId });
 }
 
 /** Sign out to a fresh anonymous id. */
 export async function logOut(): Promise<CustomerInfo> {
+  await waitForNativeRecovery();
   return await invoke(`${PLUGIN}|log_out`);
 }
 
@@ -354,5 +631,14 @@ export async function onCustomerInfoUpdated(
   return await listen<CustomerInfo>(
     "revenuecat:customer-info-updated",
     (event) => handler(event.payload),
+  );
+}
+
+/** Observe failures from automatic native transaction synchronization. */
+export async function onNativeSyncError(
+  handler: (error: NativeSyncError) => void,
+): Promise<UnlistenFn> {
+  return await listen<NativeSyncError>(NATIVE_SYNC_ERROR_EVENT, (event) =>
+    handler(event.payload),
   );
 }

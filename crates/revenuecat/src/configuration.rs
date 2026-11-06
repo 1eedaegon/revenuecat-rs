@@ -2,6 +2,7 @@
 //! `Configuration.Builder` (iOS).
 
 use std::fmt;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -114,6 +115,7 @@ pub struct Configuration {
     pub(crate) platform: Platform,
     pub(crate) platform_flavor: Option<String>,
     pub(crate) platform_flavor_version: Option<String>,
+    pub(crate) sandbox_environment: Option<bool>,
     pub(crate) http_timeout: Duration,
     pub(crate) cache_ttl: Duration,
     pub(crate) store_billing: Option<Arc<dyn StoreBilling>>,
@@ -139,8 +141,11 @@ impl fmt::Debug for Configuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Configuration")
             .field("api_key_kind", &self.api_key_kind())
-            .field("app_user_id", &self.app_user_id)
-            .field("base_url", &self.base_url)
+            .field(
+                "app_user_id",
+                &self.app_user_id.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("base_url", &"[REDACTED]")
             .field("platform", &self.platform)
             .field("has_store_billing", &self.store_billing.is_some())
             .finish_non_exhaustive()
@@ -154,6 +159,7 @@ pub struct ConfigurationBuilder {
     platform: Platform,
     platform_flavor: Option<String>,
     platform_flavor_version: Option<String>,
+    sandbox_environment: Option<bool>,
     http_timeout: Duration,
     cache_ttl: Duration,
     store_billing: Option<Arc<dyn StoreBilling>>,
@@ -161,6 +167,7 @@ pub struct ConfigurationBuilder {
     diagnostics_url: String,
     verification_mode: EntitlementVerificationMode,
     verification_root_key: Option<String>,
+    dangerously_allow_test_store_in_release_builds: bool,
 }
 
 impl ConfigurationBuilder {
@@ -172,6 +179,7 @@ impl ConfigurationBuilder {
             platform: Platform::current(),
             platform_flavor: None,
             platform_flavor_version: None,
+            sandbox_environment: None,
             http_timeout: DEFAULT_HTTP_TIMEOUT,
             cache_ttl: DEFAULT_CACHE_TTL,
             store_billing: None,
@@ -179,6 +187,7 @@ impl ConfigurationBuilder {
             diagnostics_url: crate::diagnostics::DEFAULT_DIAGNOSTICS_URL.to_owned(),
             verification_mode: EntitlementVerificationMode::default(),
             verification_root_key: None,
+            dangerously_allow_test_store_in_release_builds: false,
         }
     }
 
@@ -226,6 +235,16 @@ impl ConfigurationBuilder {
         self
     }
 
+    /// Supplies the native store's current sandbox state for the
+    /// `X-Is-Sandbox` request header.
+    ///
+    /// This is normally populated by a platform bridge. When omitted, Test
+    /// Store keys still imply sandbox while production keys omit the header.
+    pub fn sandbox_environment(mut self, is_sandbox: bool) -> Self {
+        self.sandbox_environment = Some(is_sandbox);
+        self
+    }
+
     pub fn http_timeout(mut self, timeout: Duration) -> Self {
         self.http_timeout = timeout;
         self
@@ -258,6 +277,17 @@ impl ConfigurationBuilder {
         self
     }
 
+    /// Allows a Test Store key in an iOS/Android release build.
+    ///
+    /// RevenueCat's official SDKs reject this by default because shipping a
+    /// `test_` key can make production purchases grant test entitlements.
+    /// Desktop/server release builds remain allowed without this setting so
+    /// Test Store CI and Tauri desktop development keep working.
+    pub fn dangerously_allow_test_store_in_release_builds(mut self, allowed: bool) -> Self {
+        self.dangerously_allow_test_store_in_release_builds = allowed;
+        self
+    }
+
     pub fn build(self) -> Result<Configuration> {
         if self.api_key.trim().is_empty() {
             return Err(Error::new(
@@ -265,11 +295,32 @@ impl ConfigurationBuilder {
                 "API key must not be empty.",
             ));
         }
-        let base_url = self
-            .proxy_url
-            .unwrap_or_else(|| DEFAULT_API_BASE.to_owned())
-            .trim_end_matches('/')
-            .to_owned();
+        if self.app_user_id.as_deref().is_some_and(|app_user_id| {
+            !app_user_id.trim().is_empty() && !crate::identity::is_valid_app_user_id(app_user_id)
+        }) {
+            return Err(Error::new(
+                ErrorCode::InvalidAppUserIdError,
+                format!(
+                    "appUserID must be at most {} UTF-8 bytes.",
+                    crate::identity::MAX_APP_USER_ID_BYTES
+                ),
+            ));
+        }
+        validate_test_store_release_build(
+            &self.api_key,
+            self.dangerously_allow_test_store_in_release_builds,
+            cfg!(debug_assertions),
+            cfg!(any(target_os = "ios", target_os = "android")),
+        )?;
+        let base_url = match self.proxy_url {
+            Some(proxy_url) => {
+                validate_proxy_url(&proxy_url)?;
+                proxy_url
+            }
+            None => DEFAULT_API_BASE.to_owned(),
+        }
+        .trim_end_matches('/')
+        .to_owned();
         Ok(Configuration {
             api_key: self.api_key,
             app_user_id: self.app_user_id,
@@ -277,6 +328,7 @@ impl ConfigurationBuilder {
             platform: self.platform,
             platform_flavor: self.platform_flavor,
             platform_flavor_version: self.platform_flavor_version,
+            sandbox_environment: self.sandbox_environment,
             http_timeout: self.http_timeout,
             cache_ttl: self.cache_ttl,
             store_billing: self.store_billing,
@@ -286,6 +338,53 @@ impl ConfigurationBuilder {
             verification_root_key: self.verification_root_key,
         })
     }
+}
+
+fn validate_test_store_release_build(
+    api_key: &str,
+    dangerously_allowed: bool,
+    is_debug_build: bool,
+    is_native_mobile_target: bool,
+) -> Result<()> {
+    if ApiKeyKind::from_api_key(api_key) == ApiKeyKind::TestStore
+        && is_native_mobile_target
+        && !is_debug_build
+        && !dangerously_allowed
+    {
+        return Err(Error::new(
+            ErrorCode::ConfigurationError,
+            "Test Store API keys are disabled in iOS/Android release builds. Use a production API key, or explicitly call dangerously_allow_test_store_in_release_builds(true) only for controlled testing.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_proxy_url(proxy_url: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(proxy_url).map_err(|error| {
+        Error::with_underlying(
+            ErrorCode::ConfigurationError,
+            format!("Proxy URL is invalid: {error}"),
+        )
+    })?;
+    if parsed.scheme() == "https" {
+        return Ok(());
+    }
+    let is_loopback_http = parsed.scheme() == "http"
+        && parsed.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .parse::<IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+    if is_loopback_http {
+        return Ok(());
+    }
+    Err(Error::new(
+        ErrorCode::ConfigurationError,
+        "Proxy URL must use HTTPS. Plain HTTP is allowed only for localhost or a loopback IP during local testing.",
+    ))
 }
 
 #[cfg(test)]
@@ -304,6 +403,16 @@ mod tests {
     fn rejects_empty_api_key() {
         let err = Configuration::builder("  ").build().unwrap_err();
         assert_eq!(err.code, ErrorCode::ConfigurationError);
+    }
+
+    #[test]
+    fn rejects_configured_app_user_ids_over_the_durable_limit() {
+        let error = Configuration::builder("test_key")
+            .app_user_id("x".repeat(crate::identity::MAX_APP_USER_ID_BYTES + 1))
+            .build()
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::InvalidAppUserIdError);
     }
 
     #[test]
@@ -352,5 +461,72 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(config.base_url, "http://127.0.0.1:9000");
+    }
+
+    #[test]
+    fn proxy_url_rejects_cleartext_non_loopback_hosts() {
+        let error = Configuration::builder("test_key")
+            .proxy_url("http://billing.example.com")
+            .build()
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::ConfigurationError);
+        assert!(error.message.contains("HTTPS"));
+    }
+
+    #[test]
+    fn proxy_url_allows_https_and_loopback_http() {
+        for url in [
+            "https://billing.example.com",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://[::1]:8080",
+        ] {
+            assert!(
+                Configuration::builder("test_key")
+                    .proxy_url(url)
+                    .build()
+                    .is_ok(),
+                "expected {url} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn configuration_debug_redacts_proxy_url_secrets() {
+        let config = Configuration::builder("appl_api-key-secret")
+            .app_user_id("private-user@example.com")
+            .proxy_url(
+                "https://proxy-user:proxy-password@proxy.example/path?access_token=query-secret",
+            )
+            .build()
+            .unwrap();
+
+        let debug = format!("{config:?}");
+
+        for secret in [
+            "api-key-secret",
+            "proxy-user",
+            "proxy-password",
+            "proxy.example",
+            "query-secret",
+            "private-user@example.com",
+        ] {
+            assert!(!debug.contains(secret), "Debug exposed {secret}");
+        }
+        assert!(debug.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn native_release_builds_reject_test_store_keys_without_explicit_opt_in() {
+        let error = validate_test_store_release_build("test_key", false, false, true).unwrap_err();
+        assert_eq!(error.code, ErrorCode::ConfigurationError);
+
+        assert!(validate_test_store_release_build("test_key", true, false, true).is_ok());
+    }
+
+    #[test]
+    fn desktop_release_builds_keep_supporting_test_store() {
+        assert!(validate_test_store_release_build("test_key", false, false, false).is_ok());
     }
 }

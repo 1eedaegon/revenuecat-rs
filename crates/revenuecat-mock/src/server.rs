@@ -3,6 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use axum::body::{to_bytes, Body};
@@ -384,20 +385,25 @@ async fn get_virtual_currencies(
     )
 }
 
+fn consume_receipt_rate_limit(remaining: &AtomicU32) -> bool {
+    let mut current = remaining.load(Ordering::SeqCst);
+    loop {
+        let Some(next) = current.checked_sub(1) else {
+            return false;
+        };
+        match remaining.compare_exchange_weak(current, next, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return true,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 async fn post_receipts(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
-    if state
-        .receipt_rate_limits
-        .fetch_update(
-            std::sync::atomic::Ordering::SeqCst,
-            std::sync::atomic::Ordering::SeqCst,
-            |n| n.checked_sub(1),
-        )
-        .is_ok()
-    {
+    if consume_receipt_rate_limit(&state.receipt_rate_limits) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [("Retry-After", "0")],
@@ -475,11 +481,14 @@ async fn post_receipts(
     ensure_subscriber(&state, &app_user_id);
     grant_product(&state, &app_user_id, &product, &fetch_token);
 
-    (
-        StatusCode::OK,
-        Json(subscriber_envelope(&state, &app_user_id)),
-    )
-        .into_response()
+    let mut response = subscriber_envelope(&state, &app_user_id);
+    response["purchased_products"] = json!({
+        product.identifier.clone(): {
+            "should_consume": product.product_type == "consumable"
+        }
+    });
+
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 /// Records a purchase of `product` on the subscriber, shared by the receipts
@@ -908,6 +917,18 @@ fn percent_decode(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_rate_limit_budget_stops_at_zero_without_wrapping() {
+        let remaining = std::sync::atomic::AtomicU32::new(2);
+
+        assert!(consume_receipt_rate_limit(&remaining));
+        assert_eq!(remaining.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(consume_receipt_rate_limit(&remaining));
+        assert_eq!(remaining.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(!consume_receipt_rate_limit(&remaining));
+        assert_eq!(remaining.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
 
     #[test]
     fn percent_decode_reverses_client_encoding() {

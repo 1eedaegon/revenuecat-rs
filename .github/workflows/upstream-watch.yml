@@ -2,13 +2,13 @@
 # automated PR (via peter-evans/create-pull-request) summarizing what changed
 # in the protocol-relevant paths this crate mirrors.
 #
-# Requirements:
-# - Settings -> Actions -> General -> "Allow GitHub Actions to create and
-#   approve pull requests" must be enabled.
-# - PRs created with the default GITHUB_TOKEN do NOT trigger other workflows
+# PR creation requires either Settings -> Actions -> General -> "Allow GitHub
+# Actions to create and approve pull requests", or a `PAT` repository secret.
+# Without either, the workflow still reports changes without failing.
+# PRs created with the default GITHUB_TOKEN do NOT trigger other workflows
 #   (CI will not run on the bot PR). To get CI on these PRs, set a `PAT`
-#   repo secret (classic token with `repo` scope or a GitHub App token) —
-#   the checkout/PR steps below pick it up automatically.
+#   repository secret backed by a fine-grained, repository-only token or a
+#   GitHub App token. Only the PR creation step receives it.
 
 name: Upstream watch
 
@@ -21,18 +21,18 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: true
+
 jobs:
   watch:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.PAT || github.token }}
-      - name: Runner PATH
-        run: |
-          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
-
+          persist-credentials: false
       - name: Compare upstream releases
         id: compare
         env:
@@ -41,13 +41,18 @@ jobs:
           set -euo pipefail
           changed=false
           summary="upstream/UPSTREAM_DIFF.md"
-          echo "# Upstream SDK changes" > "$summary"
-          echo "" >> "$summary"
+          {
+            echo "# Upstream SDK changes"
+            echo ""
+          } > "$summary"
 
           declare -A protocol_paths=(
-            [purchases-ios]="Sources/Networking Sources/Security"
-            [purchases-android]="purchases/src/main/kotlin/com/revenuecat/purchases/common"
-            [purchases-js]="src/networking src/entities"
+            # Models, purchase lifecycle code and networking all affect this
+            # direct port. Narrower legacy filters missed StoreKit/Play and
+            # public-model changes outside the networking directories.
+            [purchases-ios]="Sources"
+            [purchases-android]="purchases/src/main/kotlin/com/revenuecat/purchases"
+            [purchases-js]="src"
           )
 
           for repo in purchases-ios purchases-android purchases-js; do
@@ -55,24 +60,35 @@ jobs:
             pinned=$(jq -r --arg r "$repo" '.[$r]' upstream/versions.json)
             if [ "$latest" != "$pinned" ]; then
               changed=true
-              echo "## $repo: $pinned -> $latest" >> "$summary"
-              echo "" >> "$summary"
-              echo "- Release notes: https://github.com/RevenueCat/$repo/releases/tag/$latest" >> "$summary"
-              echo "- Full diff: https://github.com/RevenueCat/$repo/compare/$pinned...$latest" >> "$summary"
-              # List changed files in the protocol-relevant paths so the
-              # review focuses on wire-format impact.
-              files=$(gh api "repos/RevenueCat/$repo/compare/$pinned...$latest" \
-                --jq '.files[].filename' 2>/dev/null | head -200 || true)
+              {
+                echo "## $repo: $pinned -> $latest"
+                echo ""
+                echo "- Release notes: https://github.com/RevenueCat/$repo/releases/tag/$latest"
+                echo "- Full diff: https://github.com/RevenueCat/$repo/compare/$pinned...$latest"
+              } >> "$summary"
+              # Fetch tag trees without blobs so this sees every changed path;
+              # GitHub's compare API truncates the file list at 300 entries.
+              repo_dir=$(mktemp -d)
+              git -C "$repo_dir" init --quiet
+              git -C "$repo_dir" remote add origin "https://github.com/RevenueCat/$repo.git"
+              git -C "$repo_dir" -c protocol.version=2 fetch --quiet --filter=blob:none \
+                --depth=1 origin \
+                "refs/tags/$pinned:refs/tags/pinned" \
+                "refs/tags/$latest:refs/tags/latest"
+              files=$(git -C "$repo_dir" diff --name-only refs/tags/pinned refs/tags/latest)
+              rm -rf -- "$repo_dir"
               relevant=""
               for prefix in ${protocol_paths[$repo]}; do
                 relevant+=$(echo "$files" | grep "^$prefix" || true)$'\n'
               done
               relevant=$(echo "$relevant" | sed '/^$/d')
               if [ -n "$relevant" ]; then
-                echo "- Protocol-relevant files changed:" >> "$summary"
-                echo '```' >> "$summary"
-                echo "$relevant" | head -40 >> "$summary"
-                echo '```' >> "$summary"
+                {
+                  echo "- Protocol-relevant files changed:"
+                  echo '```'
+                  echo "$relevant" | sed -n '1,40p'
+                  echo '```'
+                } >> "$summary"
               else
                 echo "- No changes under protocol-relevant paths." >> "$summary"
               fi
@@ -84,8 +100,10 @@ jobs:
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
       - name: Open or update the sync PR
+        id: create-pr
         if: steps.compare.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v8
+        continue-on-error: true
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ secrets.PAT || github.token }}
           branch: upstream-sync
@@ -98,3 +116,11 @@ jobs:
           body-path: upstream/UPSTREAM_DIFF.md
           labels: upstream
           delete-branch: true
+
+      - name: Report changes when PR creation is disabled
+        if: >-
+          steps.compare.outputs.changed == 'true' &&
+          steps.create-pr.outcome == 'failure'
+        run: |
+          echo "::warning::Upstream changed, but the sync PR could not be created. Configure Actions PR creation or a PAT."
+          cat upstream/UPSTREAM_DIFF.md >> "$GITHUB_STEP_SUMMARY"

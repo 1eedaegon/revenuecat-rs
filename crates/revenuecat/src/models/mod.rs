@@ -20,7 +20,10 @@ pub use paywall::{
 };
 pub use redemption::{RedeemResult, WebPurchaseRedemption};
 pub use store_product::{
-    Price, PricingPhase, ProductType, ProductsResponse, StoreProduct, WebBillingProduct,
+    Price, PricingPhase, ProductType, ProductsResponse, StoreProduct, StoreProductQuery,
+    StoreProductResult, WebBillingProduct,
 };
-pub use transaction::StoreTransaction;
+pub use transaction::{
+    PlatformProductId, StorePurchase, StorePurchaseOption, StoreReceiptContext, StoreTransaction,
+};
 pub use virtual_currencies::{VirtualCurrencies, VirtualCurrency};

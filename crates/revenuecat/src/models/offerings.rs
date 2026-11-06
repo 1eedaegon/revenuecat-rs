@@ -60,7 +60,7 @@ pub struct PlacementsResponse {
     pub offering_ids_by_placement: BTreeMap<String, Option<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetingResponse {
     pub rule_id: String,
     pub revision: i64,
@@ -179,6 +179,18 @@ impl Offerings {
         response: &OfferingsResponse,
         products: &BTreeMap<String, StoreProduct>,
     ) -> Self {
+        Self::resolve_with(response, |package| {
+            products.get(&package.platform_product_identifier).cloned()
+        })
+    }
+
+    /// Internal plan-aware resolver. The public product-ID-only resolver stays
+    /// unchanged for 1.x callers, while `Purchases` can select distinct Google
+    /// base-plan products for packages sharing the same product ID.
+    pub(crate) fn resolve_with(
+        response: &OfferingsResponse,
+        resolve_product: impl Fn(&PackageResponse) -> Option<StoreProduct>,
+    ) -> Self {
         let targeting = response.targeting.clone();
         let all: BTreeMap<String, Offering> = response
             .offerings
@@ -188,18 +200,16 @@ impl Offerings {
                     .packages
                     .iter()
                     .filter_map(|package| {
-                        products
-                            .get(&package.platform_product_identifier)
-                            .map(|product| Package {
-                                identifier: package.identifier.clone(),
-                                package_type: PackageType::from_identifier(&package.identifier),
-                                store_product: product.clone(),
-                                presented_offering_context: PresentedOfferingContext {
-                                    offering_identifier: Some(offering.identifier.clone()),
-                                    placement_identifier: None,
-                                    targeting: targeting.clone(),
-                                },
-                            })
+                        resolve_product(package).map(|product| Package {
+                            identifier: package.identifier.clone(),
+                            package_type: PackageType::from_identifier(&package.identifier),
+                            store_product: product,
+                            presented_offering_context: PresentedOfferingContext {
+                                offering_identifier: Some(offering.identifier.clone()),
+                                placement_identifier: None,
+                                targeting: targeting.clone(),
+                            },
+                        })
                     })
                     .collect();
                 if packages.is_empty() {
@@ -317,5 +327,58 @@ mod tests {
             PackageType::from_identifier("my_pack"),
             PackageType::Custom("my_pack".to_owned())
         );
+    }
+
+    #[test]
+    fn internal_resolver_can_select_distinct_base_plans_for_one_product_id() {
+        let response: OfferingsResponse = serde_json::from_value(serde_json::json!({
+            "current_offering_id": "default",
+            "offerings": [{
+                "identifier": "default",
+                "packages": [
+                    {
+                        "identifier": "$rc_monthly",
+                        "platform_product_identifier": "pro",
+                        "platform_product_plan_identifier": "monthly-base"
+                    },
+                    {
+                        "identifier": "$rc_annual",
+                        "platform_product_identifier": "pro",
+                        "platform_product_plan_identifier": "annual-base"
+                    }
+                ]
+            }]
+        }))
+        .unwrap();
+        let monthly = product_with_price("pro", 1_000_000);
+        let annual = product_with_price("pro", 10_000_000);
+
+        let offerings = Offerings::resolve_with(&response, |package| {
+            match package.platform_product_plan_identifier.as_deref() {
+                Some("monthly-base") => Some(monthly.clone()),
+                Some("annual-base") => Some(annual.clone()),
+                _ => None,
+            }
+        });
+
+        let current = offerings.current().unwrap();
+        assert_eq!(
+            current.monthly().unwrap().store_product.price.amount_micros,
+            1_000_000
+        );
+        assert_eq!(
+            current.annual().unwrap().store_product.price.amount_micros,
+            10_000_000
+        );
+    }
+
+    fn product_with_price(id: &str, amount_micros: i64) -> StoreProduct {
+        StoreProduct {
+            price: Price {
+                amount_micros,
+                currency: "USD".into(),
+            },
+            ..product(id)
+        }
     }
 }

@@ -4,8 +4,7 @@ import PackageDescription
 let package = Package(
     name: "tauri-plugin-revenuecat",
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12)
+        .iOS(.v15)
     ],
     products: [
         .library(
@@ -25,6 +24,11 @@ let package = Package(
                 .byName(name: "Tauri")
             ],
             path: "Sources/RevenueCatPlugin"
+        ),
+        .testTarget(
+            name: "RevenueCatPluginTests",
+            dependencies: ["tauri-plugin-revenuecat"],
+            path: "Tests/RevenueCatPluginTests"
         )
     ]
 )

@@ -307,18 +307,6 @@
           "markdownDescription": "Denies the configure command without any pre-configured scope."
         },
         {
-          "description": "Enables the finish_transaction command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-finish-transaction",
-          "markdownDescription": "Enables the finish_transaction command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the finish_transaction command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-finish-transaction",
-          "markdownDescription": "Denies the finish_transaction command without any pre-configured scope."
-        },
-        {
           "description": "Enables the get_customer_info command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-customer-info",
@@ -379,18 +367,6 @@
           "markdownDescription": "Denies the manage_subscriptions command without any pre-configured scope."
         },
         {
-          "description": "Enables the purchase command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-purchase",
-          "markdownDescription": "Enables the purchase command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the purchase command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-purchase",
-          "markdownDescription": "Denies the purchase command without any pre-configured scope."
-        },
-        {
           "description": "Enables the purchase_package command without any pre-configured scope.",
           "type": "string",
           "const": "allow-purchase-package",
@@ -403,28 +379,28 @@
           "markdownDescription": "Denies the purchase_package command without any pre-configured scope."
         },
         {
-          "description": "Enables the query_products command without any pre-configured scope.",
+          "description": "Enables the register_listener command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-query-products",
-          "markdownDescription": "Enables the query_products command without any pre-configured scope."
+          "const": "allow-register-listener",
+          "markdownDescription": "Enables the register_listener command without any pre-configured scope."
         },
         {
-          "description": "Denies the query_products command without any pre-configured scope.",
+          "description": "Denies the register_listener command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-query-products",
-          "markdownDescription": "Denies the query_products command without any pre-configured scope."
+          "const": "deny-register-listener",
+          "markdownDescription": "Denies the register_listener command without any pre-configured scope."
         },
         {
-          "description": "Enables the query_purchases command without any pre-configured scope.",
+          "description": "Enables the remove_listener command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-query-purchases",
-          "markdownDescription": "Enables the query_purchases command without any pre-configured scope."
+          "const": "allow-remove-listener",
+          "markdownDescription": "Enables the remove_listener command without any pre-configured scope."
         },
         {
-          "description": "Denies the query_purchases command without any pre-configured scope.",
+          "description": "Denies the remove_listener command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-query-purchases",
-          "markdownDescription": "Denies the query_purchases command without any pre-configured scope."
+          "const": "deny-remove-listener",
+          "markdownDescription": "Denies the remove_listener command without any pre-configured scope."
         },
         {
           "description": "Enables the restore command without any pre-configured scope.",
@@ -463,10 +439,34 @@
           "markdownDescription": "Denies the set_email command without any pre-configured scope."
         },
         {
-          "description": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-manage-subscriptions`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`",
+          "description": "Enables the sync_pending_purchases command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sync-pending-purchases",
+          "markdownDescription": "Enables the sync_pending_purchases command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sync_pending_purchases command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sync-pending-purchases",
+          "markdownDescription": "Denies the sync_pending_purchases command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the sync_purchases command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sync-purchases",
+          "markdownDescription": "Enables the sync_purchases command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sync_purchases command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sync-purchases",
+          "markdownDescription": "Denies the sync_purchases command without any pre-configured scope."
+        },
+        {
+          "description": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-sync-pending-purchases`\n- `allow-sync-purchases`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-manage-subscriptions`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-manage-subscriptions`\n- `allow-query-products`\n- `allow-purchase`\n- `allow-query-purchases`\n- `allow-finish-transaction`"
+          "markdownDescription": "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store.\n#### This default permission set includes:\n\n- `allow-register-listener`\n- `allow-remove-listener`\n- `allow-configure`\n- `allow-session-info`\n- `allow-get-offerings`\n- `allow-get-customer-info`\n- `allow-purchase-package`\n- `allow-restore`\n- `allow-sync-pending-purchases`\n- `allow-sync-purchases`\n- `allow-log-in`\n- `allow-log-out`\n- `allow-set-email`\n- `allow-manage-subscriptions`"
         }
       ]
     }

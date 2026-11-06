@@ -9,6 +9,11 @@ use std::sync::RwLock;
 use uuid::Uuid;
 
 pub const ANONYMOUS_ID_PREFIX: &str = "$RCAnonymousID:";
+/// Maximum UTF-8 byte length accepted for a non-anonymous App User ID.
+///
+/// Keeping this boundary shared with durable Tauri identity storage prevents
+/// an identity transition that the host can never persist or resume.
+pub const MAX_APP_USER_ID_BYTES: usize = 1_024;
 
 pub fn generate_anonymous_id() -> String {
     format!("{ANONYMOUS_ID_PREFIX}{}", Uuid::new_v4().simple())
@@ -24,6 +29,10 @@ pub fn is_anonymous_id(app_user_id: &str) -> bool {
         }
         None => false,
     }
+}
+
+pub(crate) fn is_valid_app_user_id(app_user_id: &str) -> bool {
+    !app_user_id.trim().is_empty() && app_user_id.len() <= MAX_APP_USER_ID_BYTES
 }
 
 #[derive(Debug)]
@@ -54,13 +63,6 @@ impl IdentityManager {
 
     pub fn switch_user(&self, new_app_user_id: &str) {
         *self.current.write().expect("identity lock poisoned") = new_app_user_id.to_owned();
-    }
-
-    /// Resets to a fresh anonymous user and returns the new id.
-    pub fn reset_to_anonymous(&self) -> String {
-        let id = generate_anonymous_id();
-        self.switch_user(&id);
-        id
     }
 }
 
@@ -97,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_and_reset_user() {
+    fn switches_user() {
         // Arrange
         let manager = IdentityManager::new(Some("gon".into()));
         assert!(!manager.is_anonymous());
@@ -105,7 +107,8 @@ mod tests {
         // Act
         manager.switch_user("dae");
         let after_switch = manager.current_app_user_id();
-        let anon = manager.reset_to_anonymous();
+        let anon = generate_anonymous_id();
+        manager.switch_user(&anon);
 
         // Assert
         assert_eq!(after_switch, "dae");

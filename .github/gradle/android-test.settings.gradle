@@ -1,0 +1,19 @@
+rootProject.name = 'revenuecat-plugin-tests'
+
+def requiredDirectory = { String name ->
+    def value = providers.environmentVariable(name).orNull
+    if (value == null || value.isBlank()) {
+        throw new GradleException("Missing environment variable: ${name}")
+    }
+    def directory = new File(value)
+    if (!directory.isDirectory()) {
+        throw new GradleException("Not a directory: ${directory}")
+    }
+    directory
+}
+
+include ':tauri-android'
+project(':tauri-android').projectDir = requiredDirectory('TAURI_ANDROID_DIR')
+
+include ':tauri-plugin-revenuecat'
+project(':tauri-plugin-revenuecat').projectDir = requiredDirectory('REVENUECAT_PLUGIN_ANDROID_DIR')

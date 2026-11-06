@@ -21,16 +21,18 @@ exclude = [".tauri"]
 workspace = true
 
 [build-dependencies]
-tauri-plugin = { version = "2", features = ["build"] }
+tauri-plugin = { version = "2.7", features = ["build"] }
 
 [dependencies]
+atomic-write-file = "0.3.1"
 async-trait = { workspace = true }
 chrono = { workspace = true }
 revenuecat-rs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { version = "2", features = [] }
+tauri = { version = "2.12", features = [] }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
-tauri = { version = "2", features = ["test"] }
+tauri = { version = "2.12", features = ["test"] }

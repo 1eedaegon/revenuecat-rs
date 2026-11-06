@@ -21,12 +21,17 @@ additive changes bump **minor**, fixes bump **patch**. Pin a major range and
 read the release notes before a major upgrade:
 
 ```toml
-revenuecat-rs = "1"   # 1.x, additive-only until 2.0
+revenuecat-rs = "1"   # 1.x public API remains source-compatible until 2.0
 ```
 
 Breaking changes are called out in the GitHub release for each tag. The public
 API is what's re-exported from the crate root (`revenuecat::…`); anything not
 re-exported is internal and may change without notice.
+
+Within 1.x, security and transaction-integrity fixes may tighten runtime input
+validation (for example, rejecting cleartext non-loopback proxy URLs). Such
+changes preserve the public Rust/TypeScript shape but can reject configurations
+that were previously accepted and unsafe.
 
 ## Coming from the official SDKs
 
@@ -80,6 +85,10 @@ you'd hit migrating an old native app are already done: it's `CustomerInfo`
 Callbacks/delegates become `async fn` returning `Result`. The customer-info
 delegate/stream maps to `purchases.set_customer_info_listener(...)`.
 
+App User IDs must be nonblank when passed to `log_in` and may contain at most
+1,024 UTF-8 bytes. The same limit applies to an explicit ID supplied during
+configuration so every accepted identity can be stored and resumed durably.
+
 ### 3. The store: `StoreBilling` instead of a bundled StoreKit/Billing layer
 
 The native SDKs bundle StoreKit / Play Billing. Here the store is a trait you
@@ -87,8 +96,8 @@ supply: see the [`StoreBilling`](../README.md#real-stores-the-storebilling-trait
 section. Consequences that mirror the official SDKs:
 
 - **StoreKit version.** `tauri-plugin-revenuecat` implements `StoreBilling` over
-  **StoreKit 2** (iOS 15+/macOS 12+) and Play Billing. This is the same reason
-  RevenueCat's own v5 leans on StoreKit 2, the modern, Swift-concurrency API.
+  **StoreKit 2** (iOS/iPadOS 15+) and Play Billing 9.1.0 (Android API 24+).
+  The Swift package is iOS-only; use Test Store or Web Billing on macOS.
 - **"Observer mode" analog.** RevenueCat renamed observer mode to
   `purchasesAreCompletedBy`. The equivalent here is simply *your* `StoreBilling`
   impl: you own the store transaction and decide when to
@@ -98,6 +107,30 @@ section. Consequences that mirror the official SDKs:
   `restore_purchases()` (→ `POST /v1/receipts`) once per user, or do a backend
   receipt/token import from the RevenueCat dashboard. The client SDK does not
   replay history on every launch.
+
+### 4. Pick one lifecycle owner
+
+The npm guest-JS path persists the current identity and automatically schedules
+native transaction reconciliation at configure, resume/focus, and native
+transaction events. Android uses a full active-purchase query at configure to
+recover acknowledged tokens, then pending-only lifecycle queries; iOS uses its
+unfinished queue. A Rust-owned `Purchases` instance does not inherit those
+hooks merely by using `tauri_plugin_revenuecat::store_billing()`.
+
+For the Rust-owned path, persist and pass `app_user_id` yourself, update the
+stored value after `log_in`/`log_out`, and call `sync_pending_purchases()` at
+startup and when the app returns to the foreground. Use `sync_purchases()` only
+for an explicit one-time/full recovery; keep user-initiated account recovery on
+`restore_purchases()`. Also reconcile after any native purchase error before
+retrying or changing identity: a store transaction can exist even when its
+local journal or IPC response failed, and the core blocks those operations
+until synchronization settles the ambiguity.
+
+Treat `Offering` and `Package` values returned by the SDK as identity-scoped
+snapshots. Discard them after `log_in` or `log_out` and fetch offerings again;
+an SDK-issued package from an earlier identity/snapshot is rejected before
+store UI opens. Directly constructed 1.x `Package` values remain supported and
+are distinguished from SDK-issued stale snapshots internally.
 
 ## Coming from raw REST calls
 

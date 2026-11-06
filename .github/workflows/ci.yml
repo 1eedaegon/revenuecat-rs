@@ -1,94 +1,215 @@
 name: CI
 
-# Runs on the repo's self-hosted macOS ARM64 runner (free — GitHub-hosted
-# minutes are exhausted for this private repo). The runner has rustup,
-# sccache (local disk cache), cargo-deny, and the Android NDK preinstalled;
-# its persistent workspace makes cache actions unnecessary.
-
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTC_WRAPPER: sccache
+  RUST_STABLE: stable
+  RUST_MSRV: "1.90.0"
 
 jobs:
-  lint-and-test:
-    name: Lint + test (SDK crates)
-    runs-on: [self-hosted, macOS, ARM64]
+  rust-js:
+    name: Rust + JS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - name: Runner PATH
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Tauri Linux dependencies
         run: |
-          # Later lines take PATH precedence: rustup's cargo must win over
-          # the nix profile's rust-less cargo.
-          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            patchelf
+
+      - name: Install current Rust stable
+        run: |
+          rustup update "$RUST_STABLE" --no-self-update
+          rustup default "$RUST_STABLE"
+          rustup component add clippy rustfmt
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-
+
       - name: rustfmt
         run: cargo fmt --all --check
-      - name: clippy (deny warnings)
-        run: cargo clippy -p revenuecat-rs -p revenuecat-mock --all-targets -- -D warnings
-      - name: tests
-        run: cargo test -p revenuecat-rs -p revenuecat-mock
+      - name: clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Rust tests
+        run: cargo test --locked --workspace --all-targets
 
-  tauri-demo:
-    name: Full workspace incl. Tauri demo
-    runs-on: [self-hosted, macOS, ARM64]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Runner PATH
+      # Keep the declared consumer floor without doubling every pull request's
+      # compile cost. Main and manual runs exercise the MSRV after stable passes.
+      - name: Check minimum supported Rust version
+        if: github.event_name != 'pull_request'
         run: |
-          # Later lines take PATH precedence: rustup's cargo must win over
-          # the nix profile's rust-less cargo.
-          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: clippy full workspace
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: tests (unit + integration + Tauri IPC)
-        run: cargo test --workspace
+          rustup toolchain install "$RUST_MSRV" --profile minimal
+          rustup run "$RUST_MSRV" cargo check --locked --workspace --all-targets
 
-  android-targets:
-    name: ARM Android compile check
-    runs-on: [self-hosted, macOS, ARM64]
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: JS build and tests
+        working-directory: crates/tauri-plugin-revenuecat
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+          npm run build
+          dist_status=$(git status --porcelain --untracked-files=all -- dist-js)
+          if [ -n "$dist_status" ]; then
+            echo "Generated dist-js is stale or incomplete:"
+            echo "$dist_status"
+            exit 1
+          fi
+          npm test
+
+      - name: Dependency policy
+        uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
+        with:
+          command: check
+          command-arguments: advisories licenses bans sources
+
+  android:
+    name: Android Rust + Kotlin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - name: Runner PATH
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            Cargo.lock
+            crates/tauri-plugin-revenuecat/android/*.gradle.kts
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install current Rust stable for Android
         run: |
-          # Later lines take PATH precedence: rustup's cargo must win over
-          # the nix profile's rust-less cargo.
-          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: Point cargo at the local NDK toolchain
+          rustup update "$RUST_STABLE" --no-self-update
+          rustup default "$RUST_STABLE"
+          rustup target add aarch64-linux-android
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Configure hosted Android NDK
         run: |
-          TOOLCHAIN="$HOME/Library/Android/android-ndk-r27c/toolchains/llvm/prebuilt/darwin-x86_64/bin"
-          test -x "$TOOLCHAIN/aarch64-linux-android24-clang"
+          toolchain="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -x "$toolchain/aarch64-linux-android24-clang"
           {
-            echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang"
-            echo "CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android24-clang++"
-            echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar"
-            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android24-clang"
+            echo "CC_aarch64_linux_android=$toolchain/aarch64-linux-android24-clang"
+            echo "CXX_aarch64_linux_android=$toolchain/aarch64-linux-android24-clang++"
+            echo "AR_aarch64_linux_android=$toolchain/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$toolchain/aarch64-linux-android24-clang"
           } >> "$GITHUB_ENV"
-      - name: SDK core on Android target
-        run: cargo check -p revenuecat-rs --target aarch64-linux-android
-      - name: Tauri plugin (mobile cfg) on Android target
-        run: cargo check -p tauri-plugin-revenuecat --target aarch64-linux-android
 
-  audit:
-    name: Dependency audit (cargo-deny)
-    runs-on: [self-hosted, macOS, ARM64]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Runner PATH
+      - name: Check SDK and plugin on Android
+        run: >-
+          cargo check --locked -p tauri-plugin-revenuecat
+          --target aarch64-linux-android
+
+      - name: Generate lightweight Android test host
+        working-directory: demo/tauri-app/src-tauri
+        run: npx --yes @tauri-apps/cli@2.12.2 android init --ci --skip-targets-install
+
+      - name: Kotlin bridge unit tests and lint
+        working-directory: demo/tauri-app/src-tauri/gen/android
         run: |
-          # Later lines take PATH precedence: rustup's cargo must win over
-          # the nix profile's rust-less cargo.
-          echo "/etc/profiles/per-user/$USER/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: cargo-deny
-        run: cargo-deny check advisories licenses bans sources
+          tauri_manifest=$(cargo metadata --locked --format-version 1 | \
+            jq -r '.packages[] | select(.name == "tauri") | .manifest_path')
+          test -f "$tauri_manifest"
+          export TAURI_ANDROID_DIR="${tauri_manifest%/Cargo.toml}/mobile/android"
+          export REVENUECAT_PLUGIN_ANDROID_DIR="$GITHUB_WORKSPACE/crates/tauri-plugin-revenuecat/android"
+          cp "$GITHUB_WORKSPACE/.github/gradle/android-test.settings.gradle" settings.gradle
+          ./gradlew --no-daemon \
+            :tauri-plugin-revenuecat:testDebugUnitTest \
+            :tauri-plugin-revenuecat:lintDebug \
+            --console=plain
+
+  ios:
+    name: iOS Rust + Swift
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install current Rust stable for iOS
+        run: |
+          rustup update "$RUST_STABLE" --no-self-update
+          rustup default "$RUST_STABLE"
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Check SDK and plugin on iOS targets
+        run: |
+          cargo check --locked -p tauri-plugin-revenuecat --target aarch64-apple-ios
+          cargo check --locked -p tauri-plugin-revenuecat --target aarch64-apple-ios-sim
+
+      - name: Swift StoreKit bridge tests
+        working-directory: crates/tauri-plugin-revenuecat/ios
+        run: |
+          simulator_id=$(xcrun simctl list devices available -j | \
+            jq -r 'first(.devices[][] | select(.name | startswith("iPhone")) | .udid) // empty')
+          test -n "$simulator_id"
+          xcodebuild \
+            -scheme tauri-plugin-revenuecat \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            test

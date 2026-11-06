@@ -3,19 +3,18 @@
 [default]
 description = "Configure the SDK and drive offerings, purchases, customer info, and identity from the webview. On mobile, purchases route through the native store."
 permissions = [
+    "allow-register-listener",
+    "allow-remove-listener",
     "allow-configure",
     "allow-session-info",
     "allow-get-offerings",
     "allow-get-customer-info",
     "allow-purchase-package",
     "allow-restore",
+    "allow-sync-pending-purchases",
+    "allow-sync-purchases",
     "allow-log-in",
     "allow-log-out",
     "allow-set-email",
     "allow-manage-subscriptions",
-    # Native store bridge (internal; invoked over the mobile plugin channel).
-    "allow-query-products",
-    "allow-purchase",
-    "allow-query-purchases",
-    "allow-finish-transaction",
 ]

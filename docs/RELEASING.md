@@ -22,3 +22,7 @@ suite, and runs `cargo publish -p revenuecat-rs`.
   requests" under Settings → Actions.
 - **Dependabot** (`.github/dependabot.yml`): weekly cargo + actions updates,
   with `tauri*` grouped, so the demo stays on the newest Tauri.
+- **Google Play Billing**: the upstream watcher covers the three RevenueCat
+  repositories, not Google's Maven artifact. Check the official
+  [Play Billing release notes](https://developer.android.com/google/play/billing/release-notes)
+  and keep the Android Gradle dependency plus `docs/COMPATIBILITY.md` aligned.

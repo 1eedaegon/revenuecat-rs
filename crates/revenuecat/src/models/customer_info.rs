@@ -49,9 +49,9 @@ pub enum OwnershipType {
     Unknown,
 }
 
-/// Trusted Entitlements verification state. This SDK does not implement
-/// response signing yet, so the value is always `NotRequested`; the field
-/// exists for API parity with the mobile SDKs.
+/// Trusted Entitlements verification state stamped by the configured
+/// response verifier. `NotRequested` is used only when verification is
+/// disabled; informational/enforced modes can produce the other states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum VerificationResult {
     #[default]
@@ -161,6 +161,33 @@ fn default_store() -> Store {
     Store::Unknown
 }
 
+fn serialize_legacy_js_store<S>(
+    store: &Store,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let legacy_store = match store {
+        Store::Galaxy => Store::Unknown,
+        store => *store,
+    };
+    legacy_store.serialize(serializer)
+}
+
+fn serialize_legacy_js_ownership<S>(
+    ownership: &Option<OwnershipType>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match ownership {
+        Some(OwnershipType::Unknown) | None => serializer.serialize_none(),
+        Some(ownership) => serializer.serialize_some(ownership),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public models
 // ---------------------------------------------------------------------------
@@ -175,12 +202,14 @@ pub struct EntitlementInfo {
     pub latest_purchase_date: Option<DateTime<Utc>>,
     pub original_purchase_date: Option<DateTime<Utc>>,
     pub expiration_date: Option<DateTime<Utc>>,
+    #[serde(serialize_with = "serialize_legacy_js_store")]
     pub store: Store,
     pub product_identifier: String,
     pub product_plan_identifier: Option<String>,
     pub is_sandbox: bool,
     pub unsubscribe_detected_at: Option<DateTime<Utc>>,
     pub billing_issues_detected_at: Option<DateTime<Utc>>,
+    #[serde(serialize_with = "serialize_legacy_js_ownership")]
     pub ownership_type: Option<OwnershipType>,
     pub verification: VerificationResult,
 }
@@ -220,6 +249,7 @@ pub struct SubscriptionInfo {
     pub is_active: bool,
     pub will_renew: bool,
     pub period_type: PeriodType,
+    #[serde(serialize_with = "serialize_legacy_js_store")]
     pub store: Store,
     pub is_sandbox: bool,
     pub unsubscribe_detected_at: Option<DateTime<Utc>>,
@@ -228,6 +258,7 @@ pub struct SubscriptionInfo {
     pub refunded_at: Option<DateTime<Utc>>,
     pub auto_resume_date: Option<DateTime<Utc>>,
     pub store_transaction_id: Option<String>,
+    #[serde(serialize_with = "serialize_legacy_js_ownership")]
     pub ownership_type: Option<OwnershipType>,
 }
 
@@ -237,6 +268,7 @@ pub struct NonSubscriptionTransaction {
     pub transaction_identifier: String,
     pub product_identifier: String,
     pub purchase_date: DateTime<Utc>,
+    #[serde(serialize_with = "serialize_legacy_js_store")]
     pub store: Store,
     pub is_sandbox: bool,
     pub store_transaction_id: Option<String>,
@@ -361,6 +393,53 @@ impl CustomerInfo {
             .filter_map(|s| s.expires_date)
             .max()
     }
+
+    /// Returns the unmodified subscription object from the backend response.
+    ///
+    /// This is the source-compatible escape hatch for additive RevenueCat
+    /// fields that are newer than this crate's typed 1.x models (for example
+    /// `display_name`, `price`, `product_plan_identifier`, or
+    /// `management_url`). Unknown fields remain available here because
+    /// [`CustomerInfo::raw`] retains the complete response.
+    pub fn raw_subscription(&self, product_identifier: &str) -> Option<&serde_json::Value> {
+        self.raw
+            .get("subscriber")?
+            .get("subscriptions")?
+            .get(product_identifier)
+    }
+
+    /// Returns the unmodified entitlement object from the backend response.
+    /// This preserves future additive fields without changing the public
+    /// [`EntitlementInfo`] struct layout in a 1.x release.
+    pub fn raw_entitlement(&self, entitlement_identifier: &str) -> Option<&serde_json::Value> {
+        self.raw
+            .get("subscriber")?
+            .get("entitlements")?
+            .get(entitlement_identifier)
+    }
+
+    /// Returns the exact `ownership_type` wire value for a subscription.
+    ///
+    /// In particular, current RevenueCat responses can return `ASSIGNED` for
+    /// organization-provided access. The existing exhaustive
+    /// [`OwnershipType`] enum maps new values to `Unknown` to remain source
+    /// compatible; this method lets callers distinguish them immediately.
+    pub fn subscription_ownership_type_raw(&self, product_identifier: &str) -> Option<&str> {
+        self.raw_subscription(product_identifier)?
+            .get("ownership_type")?
+            .as_str()
+    }
+
+    /// Returns the exact ownership wire value for the subscription backing an
+    /// entitlement, including the current `ASSIGNED` value.
+    pub fn entitlement_ownership_type_raw(&self, entitlement_identifier: &str) -> Option<&str> {
+        let entitlement = self.raw_entitlement(entitlement_identifier)?;
+        if let Some(ownership_type) = entitlement.get("ownership_type").and_then(|v| v.as_str()) {
+            return Some(ownership_type);
+        }
+        let product_identifier = entitlement.get("product_identifier")?.as_str()?;
+        self.subscription_ownership_type_raw(product_identifier)
+    }
 }
 
 /// Device-clock-independent activity check, mirroring
@@ -386,11 +465,14 @@ fn will_renew(
     expires_date: Option<DateTime<Utc>>,
     unsubscribe_detected_at: Option<DateTime<Utc>>,
     billing_issues_detected_at: Option<DateTime<Utc>>,
+    period_type: PeriodType,
 ) -> bool {
     let is_promo = store == Store::Promotional;
     let is_lifetime = expires_date.is_none();
+    let is_prepaid = period_type == PeriodType::Prepaid;
     !(is_promo
         || is_lifetime
+        || is_prepaid
         || unsubscribe_detected_at.is_some()
         || billing_issues_detected_at.is_some())
 }
@@ -411,6 +493,7 @@ fn build_subscription(
             sub.expires_date,
             sub.unsubscribe_detected_at,
             sub.billing_issues_detected_at,
+            sub.period_type,
         ),
         period_type: sub.period_type,
         store: sub.store,
@@ -439,7 +522,15 @@ fn build_entitlement(
     EntitlementInfo {
         identifier: identifier.to_owned(),
         is_active: is_active_at(ent.expires_date, request_date),
-        will_renew: will_renew(store, ent.expires_date, unsubscribe, billing_issue),
+        will_renew: will_renew(
+            store,
+            ent.expires_date,
+            unsubscribe,
+            billing_issue,
+            backing_subscription
+                .map(|s| s.period_type)
+                .unwrap_or(PeriodType::Normal),
+        ),
         period_type: backing_subscription
             .map(|s| s.period_type)
             .unwrap_or(PeriodType::Normal),
@@ -460,89 +551,4 @@ fn build_entitlement(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const SUBSCRIBER_FIXTURE: &str = include_str!("../../tests/fixtures/subscriber.json");
-
-    fn fixture() -> CustomerInfo {
-        let raw: serde_json::Value = serde_json::from_str(SUBSCRIBER_FIXTURE).unwrap();
-        CustomerInfo::from_response(raw).unwrap()
-    }
-
-    #[test]
-    fn parses_purchases_js_fixture() {
-        // Arrange / Act
-        let info = fixture();
-
-        // Assert
-        assert_eq!(info.original_app_user_id, "someAppUserId");
-        assert_eq!(info.subscriptions.len(), 2);
-        assert_eq!(info.entitlements.all.len(), 2);
-        assert_eq!(info.non_subscription_transactions.len(), 1);
-        assert_eq!(
-            info.management_url.as_deref(),
-            Some("https://test-management-url.revenuecat.com")
-        );
-    }
-
-    #[test]
-    fn entitlement_activeness_uses_request_date() {
-        let info = fixture();
-        assert!(info.entitlements.is_active("activeCatServices"));
-        assert!(!info.entitlements.is_active("expiredCatServices"));
-        assert!(!info.entitlements.is_active("nonexistent"));
-    }
-
-    #[test]
-    fn active_subscriptions_excludes_expired() {
-        let info = fixture();
-        let active = info.active_subscriptions();
-        assert!(active.contains("black_f_friday_worten"));
-        assert!(!active.contains("black_f_friday_worten_2"));
-    }
-
-    #[test]
-    fn all_purchased_product_ids_includes_non_subscriptions() {
-        let info = fixture();
-        assert!(info.all_purchased_product_ids().contains("consumable"));
-    }
-
-    #[test]
-    fn unknown_store_and_ownership_fall_back_gracefully() {
-        // Arrange: minimal subscriber with unknown enum values.
-        let raw = serde_json::json!({
-            "request_date": "2024-01-22T13:23:07Z",
-            "subscriber": {
-                "original_app_user_id": "u",
-                "first_seen": "2024-01-01T00:00:00Z",
-                "subscriptions": {
-                    "p1": {"store": "some_future_store", "period_type": "weird", "expires_date": null}
-                },
-                "entitlements": {
-                    "pro": {"product_identifier": "p1"}
-                }
-            }
-        });
-
-        // Act
-        let info = CustomerInfo::from_response(raw).unwrap();
-
-        // Assert: lenient parsing like the official SDKs.
-        assert_eq!(info.subscriptions["p1"].store, Store::Unknown);
-        assert_eq!(info.subscriptions["p1"].period_type, PeriodType::Unknown);
-        assert!(
-            info.entitlements.is_active("pro"),
-            "no expires_date means lifetime-active"
-        );
-    }
-
-    #[test]
-    fn family_shared_ownership_parses() {
-        let info = fixture();
-        assert_eq!(
-            info.subscriptions["black_f_friday_worten_2"].ownership_type,
-            Some(OwnershipType::FamilyShared)
-        );
-    }
-}
+mod tests;
