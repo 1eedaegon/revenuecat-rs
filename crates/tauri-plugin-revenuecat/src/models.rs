@@ -531,6 +531,24 @@ mod tests {
     }
 
     #[test]
+    fn converts_each_native_product_type_name() {
+        for (name, expected) in [
+            ("consumable", ProductType::Consumable),
+            ("non_consumable", ProductType::NonConsumable),
+            ("lifetime", ProductType::Unknown),
+        ] {
+            let json = format!(
+                r#"{{"identifier":"coins","productType":"{name}","title":"Coins",
+                "priceMicros":990000,"currency":"USD"}}"#
+            );
+
+            let plugin_product: PluginProduct = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(StoreProduct::from(plugin_product).product_type, expected);
+        }
+    }
+
+    #[test]
     fn converts_plugin_transaction_with_store_of_build_target() {
         let json = r#"{"purchaseToken":"tok","productIds":["monthly"],
             "transactionId":"GPA.123","purchaseTimeMs":1786371532643}"#;
@@ -729,6 +747,53 @@ mod tests {
 
         for json in [partial_price, negative_price] {
             let response: NativePurchaseResponse = serde_json::from_str(json).unwrap();
+            let error = response.try_into_store_purchase().unwrap_err();
+
+            assert_eq!(error.code, revenuecat::ErrorCode::StoreProblemError);
+        }
+    }
+
+    #[test]
+    fn native_purchase_accepts_a_free_receipt_price() {
+        let json = r#"{"purchaseToken":"jws","productIds":["monthly"],
+            "transactionId":"42","purchaseTimeMs":1786371532643,
+            "receiptContext":{"priceMicros":0,"currency":"USD",
+                "sdkOriginated":true}}"#;
+
+        let response: NativePurchaseResponse = serde_json::from_str(json).unwrap();
+        let purchase = response.try_into_store_purchase().unwrap();
+
+        let context = purchase.receipt_context().unwrap();
+        assert_eq!(context.price().unwrap().amount_micros, 0);
+    }
+
+    #[test]
+    fn native_purchase_rejects_each_blank_receipt_attribution_field_alone() {
+        let blank_offering = r#"{"presentedOfferingIdentifier":" ","sdkOriginated":true}"#;
+        let blank_targeting_rule =
+            r#"{"appliedTargetingRule":{"ruleId":"\t","revision":7},"sdkOriginated":true}"#;
+
+        for receipt_context in [blank_offering, blank_targeting_rule] {
+            let json = format!(
+                r#"{{"purchaseToken":"jws","productIds":["monthly"],
+                "transactionId":"42","purchaseTimeMs":1786371532643,
+                "receiptContext":{receipt_context}}}"#
+            );
+            let response: NativePurchaseResponse = serde_json::from_str(&json).unwrap();
+            let error = response.try_into_store_purchase().unwrap_err();
+
+            assert_eq!(error.code, revenuecat::ErrorCode::StoreProblemError);
+        }
+    }
+
+    #[test]
+    fn native_purchase_rejects_missing_or_blank_product_ids() {
+        for product_ids in ["[]", r#"[" "]"#] {
+            let json = format!(
+                r#"{{"purchaseToken":"jws","productIds":{product_ids},
+                "transactionId":"42","purchaseTimeMs":1786371532643}}"#
+            );
+            let response: NativePurchaseResponse = serde_json::from_str(&json).unwrap();
             let error = response.try_into_store_purchase().unwrap_err();
 
             assert_eq!(error.code, revenuecat::ErrorCode::StoreProblemError);

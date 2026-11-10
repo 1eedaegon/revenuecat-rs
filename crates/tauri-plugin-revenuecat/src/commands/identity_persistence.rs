@@ -237,4 +237,90 @@ mod tests {
         assert_eq!(load(&path).unwrap_err().code, ErrorCode::ConfigurationError);
         fs::remove_file(path).unwrap();
     }
+
+    #[test]
+    fn identity_file_name_is_stable_across_releases() {
+        assert_eq!(identity_file_name(), "revenuecat-app-user-id.json");
+    }
+
+    #[test]
+    fn only_a_transitioning_identity_reports_a_pending_operation() {
+        let pending =
+            PersistedIdentity::transitioning("user-a", "user-b", IdentityOperation::LogOut);
+
+        assert_eq!(pending.pending_operation(), Some(IdentityOperation::LogOut));
+        assert_eq!(
+            PersistedIdentity::settled("user-a").pending_operation(),
+            None
+        );
+    }
+
+    #[test]
+    fn missing_identity_file_loads_as_absent() {
+        let path = test_identity_path("identity-missing");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(load(&path).unwrap(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_identity_path_fails_closed() {
+        let parent = test_identity_path("identity-not-a-directory");
+        fs::write(&parent, b"file").unwrap();
+
+        let error = load(&parent.join("identity.json")).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::ConfigurationError);
+        fs::remove_file(parent).unwrap();
+    }
+
+    // JSON escapes each control character to six bytes, so a valid App User ID
+    // can serialize far past its own length.
+    fn identity_serializing_to(byte_length: usize) -> PersistedIdentity {
+        let envelope = serde_json::to_vec(&PersistedIdentity::settled(""))
+            .unwrap()
+            .len();
+        let escaped_characters = (byte_length - envelope) / 6;
+        let plain_characters = (byte_length - envelope) % 6;
+        PersistedIdentity::settled(format!(
+            "{}{}",
+            "\u{1}".repeat(escaped_characters),
+            "a".repeat(plain_characters)
+        ))
+    }
+
+    #[test]
+    fn identity_at_the_size_limit_round_trips() {
+        let path = test_identity_path("identity-size-limit");
+        let _ = fs::remove_file(&path);
+        let identity = identity_serializing_to(MAX_IDENTITY_FILE_BYTES);
+
+        persist(&path, &identity).unwrap();
+
+        assert_eq!(
+            fs::metadata(&path).unwrap().len(),
+            MAX_IDENTITY_FILE_BYTES as u64
+        );
+        assert_eq!(load(&path).unwrap(), Some(identity));
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn identity_past_the_size_limit_is_neither_persisted_nor_loaded() {
+        let path = test_identity_path("identity-past-size-limit");
+        let _ = fs::remove_file(&path);
+        let oversized = identity_serializing_to(MAX_IDENTITY_FILE_BYTES + 1);
+
+        let error = persist(&path, &oversized).unwrap_err();
+        assert_eq!(error.code, ErrorCode::ConfigurationError);
+        assert!(!path.exists());
+
+        // Valid JSON padded past the limit must not be truncated into acceptance.
+        let mut padded = serde_json::to_vec("user-a").unwrap();
+        padded.resize(MAX_IDENTITY_FILE_BYTES + 1, b' ');
+        fs::write(&path, padded).unwrap();
+        assert_eq!(load(&path).unwrap_err().code, ErrorCode::ConfigurationError);
+        fs::remove_file(path).unwrap();
+    }
 }
