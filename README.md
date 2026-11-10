@@ -425,7 +425,7 @@ platform floors are:
 | iOS / iPadOS | **15.0+** | StoreKit 2 (Swift-concurrency IAP); the plugin is `@available(iOS 15, *)` and rejects older with a clear error |
 | Android | **API 24+ (7.0)** | plugin `minSdk = 24`, `compileSdk = 36`, Play Billing **9.1.0**; the compile SDK does not raise the consuming app's target SDK |
 | macOS desktop | **Native bridge unsupported** | the Swift plugin target is iOS-only; use Test Store or Web Billing |
-| Tauri | **2.12.5+** | mobile lifecycle propagation + IPC/plugin listeners used by receipt recovery |
+| Tauri | **2.12.4+** | mobile lifecycle propagation + IPC/plugin listeners used by receipt recovery; 2.12.4 stops a late native reply from aborting the app |
 
 Play callbacks do not include the selected base plan. The bridge serializes
 local flows and correlates known tokens; after posting a novel token, the Rust

@@ -1,14 +1,18 @@
 # Releasing (maintainers)
 
 Publishing to crates.io is tag-driven (`.github/workflows/release.yml`):
-bump `[workspace.package] version`, then
+bump `[workspace.package] version`, the `revenuecat-rs` version under
+`[workspace.dependencies]`, and `crates/tauri-plugin-revenuecat/package.json`
+to the same value, run `cargo update -w`, then
 
 ```sh
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 The release workflow verifies the tag matches `Cargo.toml`, re-runs the test
-suite, and runs `cargo publish -p revenuecat-rs`.
+suite, checks the packaged crates, and publishes `revenuecat-rs`, then
+`tauri-plugin-revenuecat` to crates.io and npm. The tag must be reachable from
+`main`.
 
 ## Protocol-currency automations
 
