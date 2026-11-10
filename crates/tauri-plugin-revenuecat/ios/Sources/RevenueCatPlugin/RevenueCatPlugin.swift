@@ -695,7 +695,7 @@ class UnsupportedRevenueCatPlugin: Plugin {
 }
 
 @_cdecl("init_plugin_revenuecat")
-func initPlugin() -> Plugin {
+public func initPlugin() -> Plugin {
     if #available(iOS 15.0, macOS 12.0, *) {
         return RevenueCatPlugin()
     }

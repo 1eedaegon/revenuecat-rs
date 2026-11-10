@@ -91,6 +91,23 @@ fn configure_mock(webview: &WebviewWindow<MockRuntime>, app_user_id: Option<&str
     .unwrap()
 }
 
+fn identity_journal_path(app: &App<MockRuntime>) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap()
+        .join("revenuecat-app-user-id.json")
+}
+
+fn write_identity_journal(app: &App<MockRuntime>, journal: Value) {
+    let path = identity_journal_path(app);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, serde_json::to_vec(&journal).unwrap()).unwrap();
+}
+
+fn read_identity_journal(app: &App<MockRuntime>) -> Value {
+    serde_json::from_slice(&std::fs::read(identity_journal_path(app)).unwrap()).unwrap()
+}
+
 #[test]
 fn configure_selects_the_embedded_mock_backend() {
     let (_app, webview) = build_app();
@@ -120,6 +137,130 @@ fn mock_apps_do_not_share_persisted_identity() {
 
     assert_eq!(session["isAnonymous"], true);
     assert_ne!(session["appUserId"], "first-user");
+}
+
+#[test]
+fn configure_persists_the_explicit_app_user_id() {
+    let (app, webview) = build_app();
+
+    let session = configure_mock(&webview, Some("gon"));
+
+    assert_eq!(session["appUserId"], "gon");
+    assert_eq!(session["isAnonymous"], false);
+    assert_eq!(
+        read_identity_journal(&app),
+        json!({ "currentAppUserId": "gon" })
+    );
+}
+
+#[test]
+fn configure_treats_an_empty_app_user_id_as_anonymous() {
+    let (_app, webview) = build_app();
+
+    let session = configure_mock(&webview, Some(""));
+
+    assert_eq!(session["isAnonymous"], true);
+}
+
+#[test]
+fn configure_repeats_identical_options_and_rejects_different_ones() {
+    let (_app, webview) = build_app();
+    let mock = invoke(&webview, "start_mock", json!({})).unwrap();
+    let configure = |app_user_id: &str| {
+        invoke(
+            &webview,
+            "plugin:revenuecat|configure",
+            json!({
+                "options": {
+                    "apiKey": mock["apiKey"],
+                    "proxyUrl": mock["proxyUrl"],
+                    "verificationRootKey": mock["verificationRootKey"],
+                    "appUserId": app_user_id,
+                }
+            }),
+        )
+    };
+    let first = configure("gon").unwrap();
+
+    let repeated = configure("gon").unwrap();
+    let conflicting = configure("someone-else").unwrap_err();
+
+    assert_eq!(repeated, first);
+    assert_eq!(conflicting["code"], "ConfigurationError");
+    let session = invoke(&webview, "plugin:revenuecat|session_info", json!({})).unwrap();
+    assert_eq!(session["appUserId"], "gon");
+}
+
+#[test]
+fn configure_resumes_an_interrupted_log_in() {
+    let (app, webview) = build_app();
+    write_identity_journal(
+        &app,
+        json!({
+            "currentAppUserId": "user-a",
+            "pendingAppUserId": "user-b",
+            "pendingOperation": "logIn",
+        }),
+    );
+
+    let session = configure_mock(&webview, None);
+
+    assert_eq!(session["appUserId"], "user-b");
+    assert_eq!(
+        read_identity_journal(&app),
+        json!({ "currentAppUserId": "user-b" })
+    );
+}
+
+#[test]
+fn pending_log_in_only_resumes_with_the_same_app_user_id() {
+    let (app, webview) = build_app();
+    configure_mock(&webview, Some("gon"));
+    write_identity_journal(
+        &app,
+        json!({
+            "currentAppUserId": "gon",
+            "pendingAppUserId": "pending-user",
+            "pendingOperation": "logIn",
+        }),
+    );
+
+    let different_log_in = invoke(
+        &webview,
+        "plugin:revenuecat|log_in",
+        json!({ "appUserId": "someone-else" }),
+    )
+    .unwrap_err();
+    let log_out = invoke(&webview, "plugin:revenuecat|log_out", json!({})).unwrap_err();
+    invoke(
+        &webview,
+        "plugin:revenuecat|log_in",
+        json!({ "appUserId": "pending-user" }),
+    )
+    .unwrap();
+
+    assert_eq!(different_log_in["code"], "OperationAlreadyInProgressError");
+    assert_eq!(log_out["code"], "OperationAlreadyInProgressError");
+    let session = invoke(&webview, "plugin:revenuecat|session_info", json!({})).unwrap();
+    assert_eq!(session["appUserId"], "pending-user");
+    assert_eq!(
+        read_identity_journal(&app),
+        json!({ "currentAppUserId": "pending-user" })
+    );
+}
+
+#[test]
+fn set_email_requires_a_configured_sdk() {
+    let (_app, webview) = build_app();
+
+    let error = invoke(
+        &webview,
+        "plugin:revenuecat|set_email",
+        json!({ "email": "gon@example.com" }),
+    )
+    .unwrap_err();
+
+    assert_eq!(error["code"], "ConfigurationError");
 }
 
 #[test]

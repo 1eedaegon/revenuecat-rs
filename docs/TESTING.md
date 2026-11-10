@@ -95,7 +95,7 @@ The Android bridge is tested from the generated Tauri Android host:
 
 ```sh
 cd demo/tauri-app/src-tauri
-npx --yes @tauri-apps/cli@2.12.2 android init --ci --skip-targets-install
+npx --yes @tauri-apps/cli@2.12.4 android init --ci --skip-targets-install
 cd gen/android
 ./gradlew :tauri-plugin-revenuecat:testDebugUnitTest \
   :tauri-plugin-revenuecat:lintDebug

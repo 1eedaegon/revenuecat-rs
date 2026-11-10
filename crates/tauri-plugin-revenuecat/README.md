@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/tauri-plugin-revenuecat)](https://www.npmjs.com/package/tauri-plugin-revenuecat)
 [![crates.io](https://img.shields.io/crates/v/tauri-plugin-revenuecat)](https://crates.io/crates/tauri-plugin-revenuecat)
 
-Tauri 2.12+ mobile plugin that bridges **StoreKit 2** (iOS) and **Play Billing**
+Tauri 2.12.4+ mobile plugin that bridges **StoreKit 2** (iOS) and **Play Billing**
 (Android) into the [`revenuecat-rs`](https://crates.io/crates/revenuecat-rs)
 crate's `StoreBilling` seam, and exposes the SDK to the webview as a typed
 TypeScript package. It is a feature-scoped direct port against the reviewed
@@ -14,9 +14,16 @@ For the full SDK surface, model reference, and desktop story, see the
 
 ## Install
 
+TypeScript-owned SDK state (run from the Tauri app root):
+
 ```sh
-npm i tauri-plugin-revenuecat          # TypeScript track (bindings + types)
-cargo add tauri-plugin-revenuecat      # Rust track (native store bridge)
+npm install tauri-plugin-revenuecat && cargo add --manifest-path src-tauri/Cargo.toml tauri-plugin-revenuecat
+```
+
+Rust-owned SDK state:
+
+```sh
+cargo add --manifest-path src-tauri/Cargo.toml tauri-plugin-revenuecat revenuecat-rs
 ```
 
 ## Register
@@ -31,6 +38,14 @@ Grant the commands in `src-tauri/capabilities/default.json`:
 
 ```json
 { "identifier": "default", "windows": ["main"], "permissions": ["revenuecat:default"] }
+```
+
+Run on desktop, Android, or iOS:
+
+```sh
+npm run tauri dev
+npm run tauri android dev
+npm run tauri ios dev
 ```
 
 ## Two tracks

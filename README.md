@@ -21,27 +21,56 @@ CI. Real stores plug in through one trait.
 
 ![Tauri demo](docs/demo-ui.png)
 
-```toml
-[dependencies]
-revenuecat-rs = "1.0"   # imported in code as `revenuecat`
+## Quick commands
+
+Pure Rust SDK:
+
+```sh
+cargo add revenuecat-rs
+```
+
+Tauri app with TypeScript-owned SDK state (run from the app root):
+
+```sh
+npm install tauri-plugin-revenuecat && cargo add --manifest-path src-tauri/Cargo.toml tauri-plugin-revenuecat
+```
+
+Tauri app with Rust-owned SDK state:
+
+```sh
+cargo add --manifest-path src-tauri/Cargo.toml tauri-plugin-revenuecat revenuecat-rs
+```
+
+Run a standard Tauri app on desktop, Android, or iOS:
+
+```sh
+npm run tauri dev
+npm run tauri android dev
+npm run tauri ios dev
 ```
 
 ## Usage
 
 ### Two tracks in a Tauri app: TypeScript or Rust
 
-#### Track 1 — TypeScript (the plugin owns the SDK)
+Both tracks register the same plugin:
 
-Drive everything from the webview, no per-app Rust glue. Grant the commands in
-`src-tauri/capabilities/default.json`:
+```rust
+tauri::Builder::default()
+    .plugin(tauri_plugin_revenuecat::init())
+    // ... your setup and commands
+```
+
+Grant its commands in `src-tauri/capabilities/default.json`:
 
 ```json
 { "identifier": "default", "windows": ["main"], "permissions": ["revenuecat:default"] }
 ```
 
-Then Run: `npm i tauri-plugin-revenuecat` 
+#### Track 1 — TypeScript (the plugin owns the SDK)
 
-And call the typed wrappers:
+Drive everything from the webview with no per-app Rust command glue, then call
+the typed wrappers:
 
 ```ts
 import { configure, getOfferings, purchasePackage } from "tauri-plugin-revenuecat";
@@ -85,8 +114,6 @@ of creating a new subscriber every time.
 Keep the SDK logic in Rust and expose your own commands; the plugin supplies the
 native store on mobile via `store_billing`.
 
-Run: `cargo add revenuecat-rs`
-
 ```rust
 .setup(|app| {
     let billing = tauri_plugin_revenuecat::store_billing(app.handle())?;
@@ -107,7 +134,15 @@ async fn buy(
 ) -> Result<revenuecat::PurchaseResult, revenuecat::Error> {
     let purchases = purchases.inner().clone(); // Purchases is Clone (Arc-backed)
     let offerings = purchases.get_offerings().await?;
-    let pkg = offerings.current().and_then(|o| o.package(&package_id)).unwrap();
+    let pkg = offerings
+        .current()
+        .and_then(|offering| offering.package(&package_id))
+        .ok_or_else(|| {
+            revenuecat::Error::new(
+                revenuecat::ErrorCode::ProductNotAvailableForPurchaseError,
+                format!("package not found: {package_id}"),
+            )
+        })?;
     purchases.purchase_package(pkg).await
 }
 ```
@@ -123,15 +158,6 @@ wired to a Rust-owned `Purchases` instance. Reserve `sync_purchases()` for an
 explicit one-time/full recovery over the platform's full purchase set; normal
 lifecycle recovery should stay pending-only. See the
 [compatibility guide](docs/COMPATIBILITY.md#ownership-and-recovery-paths).
-
-The plugin supports two ways to use RevenueCat. Both register the plugin the
-same way; they differ in **who owns the SDK**.
-
-```rust
-tauri::Builder::default()
-    .plugin(tauri_plugin_revenuecat::init())
-    // ... your other setup
-```
 
 ### Configure
 
@@ -399,7 +425,7 @@ platform floors are:
 | iOS / iPadOS | **15.0+** | StoreKit 2 (Swift-concurrency IAP); the plugin is `@available(iOS 15, *)` and rejects older with a clear error |
 | Android | **API 24+ (7.0)** | plugin `minSdk = 24`, `compileSdk = 36`, Play Billing **9.1.0**; the compile SDK does not raise the consuming app's target SDK |
 | macOS desktop | **Native bridge unsupported** | the Swift plugin target is iOS-only; use Test Store or Web Billing |
-| Tauri | **2.12+** | mobile lifecycle propagation + IPC/plugin listeners used by receipt recovery |
+| Tauri | **2.12.4+** | mobile lifecycle propagation + IPC/plugin listeners used by receipt recovery; 2.12.4 stops a late native reply from aborting the app |
 
 Play callbacks do not include the selected base plan. The bridge serializes
 local flows and correlates known tokens; after posting a novel token, the Rust

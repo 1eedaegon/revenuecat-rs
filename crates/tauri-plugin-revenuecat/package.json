@@ -1,6 +1,6 @@
 {
   "name": "tauri-plugin-revenuecat",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Typed JS/TS bindings for the tauri-plugin-revenuecat plugin: drive RevenueCat from a Tauri webview.",
   "keywords": [
     "tauri",
@@ -34,7 +34,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run test:types && npm run test:unit",
-    "test:types": "tsc --noEmit --strict --target ES2021 --module ESNext --moduleResolution Bundler --skipLibCheck guest-js/public-contract.type-test.ts",
+    "test:types": "tsc --ignoreConfig --noEmit --strict --target ES2021 --module ESNext --moduleResolution Bundler --skipLibCheck guest-js/public-contract.type-test.ts",
     "test:unit": "node --experimental-strip-types --experimental-test-module-mocks --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test guest-js/*.test.mjs"
   },
   "repository": {
@@ -46,9 +46,9 @@
     "url": "https://github.com/1eedaegon/revenuecat-rs/issues"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.0"
+    "@tauri-apps/api": "^2.12.3"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^7.0.2"
   }
 }

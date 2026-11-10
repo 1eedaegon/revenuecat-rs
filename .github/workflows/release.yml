@@ -99,8 +99,9 @@ jobs:
           sdk_dir="$package_extract/revenuecat-rs-$release_version"
           plugin_dir="$package_extract/tauri-plugin-revenuecat-$release_version"
 
-          cargo package --locked --no-verify -p revenuecat-rs
-          cargo package --locked --no-verify -p tauri-plugin-revenuecat
+          # One invocation, so the plugin's lockfile resolves the SDK version
+          # being released instead of the newest one already on crates.io.
+          cargo package --locked --no-verify -p revenuecat-rs -p tauri-plugin-revenuecat
           test -f "$sdk_crate"
           test -f "$plugin_crate"
           mkdir -p "$package_extract"
@@ -109,7 +110,9 @@ jobs:
           test -f "$sdk_dir/Cargo.toml"
           test -f "$plugin_dir/Cargo.toml"
 
-          cargo check --locked --manifest-path "$sdk_dir/Cargo.toml" --all-targets
+          # Library only: the SDK's tests and examples need the unpublished
+          # revenuecat-mock crate, which cargo strips from the packaged manifest.
+          cargo check --locked --manifest-path "$sdk_dir/Cargo.toml"
           cargo_patch="patch.crates-io.revenuecat-rs.path='$sdk_dir'"
           resolved_sdk=$(cargo metadata --format-version 1 \
             --manifest-path "$plugin_dir/Cargo.toml" \
